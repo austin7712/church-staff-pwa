@@ -268,6 +268,7 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         eligible: eligible,
         sameDayOthers: _others,
         groupRoles: groupRoles,
+        templateRoles: data.roles,
       );
       if (result.updated.isEmpty) {
         messenger.showSnackBar(

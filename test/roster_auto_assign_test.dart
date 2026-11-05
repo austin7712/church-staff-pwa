@@ -333,4 +333,22 @@ void main() {
       }
     }
   });
+
+  test('週次裡還沒有的項目（後來才加的幼兒主日）也會補上並排人', () {
+    final result = autoAssign(
+      targets: [
+        _week(DateTime.utc(2027, 1, 3), {
+          '音控': ['A'],
+        }),
+      ],
+      history: const [],
+      eligible: const {
+        '幼兒主日': {'Tiyu'},
+      },
+      templateRoles: const ['音控', '幼兒主日'],
+    );
+    final duties = result.updated.single.duties;
+    expect(duties.map((d) => d.role), ['音控', '幼兒主日']);
+    expect(duties.last.people, ['Tiyu']);
+  });
 }

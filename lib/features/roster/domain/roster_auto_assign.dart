@@ -178,6 +178,7 @@ AutoAssignResult autoAssign({
   List<ServiceRoster> sameDayOthers = const [],
   Set<String> skipRoles = const {kTwSpeakerRole, kMwSpeakerRole},
   Map<String, List<String>> groupRoles = const {},
+  List<String> templateRoles = const [],
 }) {
   final patterns = _learnPatterns(history);
   final monthGroups = {
@@ -242,13 +243,20 @@ AutoAssignResult autoAssign({
     var changed = false;
     final duties = <RosterEntry>[];
     final month = _monthKey(roster.date);
-    for (final MapEntry(key: role, value: byMonth) in monthGroups.entries) {
-      if (roster.duties.any((d) => d.role == role)) continue;
-      if (byMonth[month] == null) continue;
+    // 服事項目設定裡有、這一週卻還沒有的項目（建立空白週次之後才加的項目，
+    // 例如幼兒主日）：補上「待定」再排。
+    final missing = <String>[
+      for (final role in {...templateRoles, ...monthGroups.keys})
+        if (!skipRoles.contains(role) &&
+            !roster.duties.any((d) => d.role == role))
+          role,
+    ];
+    if (missing.isNotEmpty) {
       roster = roster.copyWith(
         duties: [
           ...roster.duties,
-          RosterEntry(role: role, people: const [kTbdPlaceholder]),
+          for (final role in missing)
+            RosterEntry(role: role, people: const [kTbdPlaceholder]),
         ],
       );
     }
