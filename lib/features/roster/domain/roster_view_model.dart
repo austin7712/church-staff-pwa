@@ -47,8 +47,18 @@ bool isPersonMe(
   final id = userId?.trim() ?? '';
   final linked = duty.personIdsByName[trimmed]?.trim() ?? '';
   if (id.isNotEmpty && linked == id) return true;
-  final name = userName?.trim().toLowerCase() ?? '';
-  return name.isNotEmpty && trimmed.toLowerCase() == name;
+  return rosterNameMatchesUser(trimmed, userName);
+}
+
+/// 服事表上的名字是不是這位同工。服事表常只寫名字（「Austin」），帳號
+/// 上是全名（「Austin Lin」），所以名字等於全名的第一個字也算。
+bool rosterNameMatchesUser(String rosterName, String? userName) {
+  final n = rosterName.trim().toLowerCase();
+  final full = userName?.trim().toLowerCase() ?? '';
+  if (n.isEmpty || full.isEmpty) return false;
+  if (n == full) return true;
+  final first = full.split(RegExp(r'\s+')).first;
+  return !n.contains(' ') && first.length > 1 && n == first;
 }
 
 /// 這一天排到這位同工的服事項目，照服事表上的順序。

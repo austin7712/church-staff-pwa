@@ -263,4 +263,12 @@ void main() {
       expect(dutiesInOrder(day.duties, const []), same(day.duties));
     });
   });
+
+  test('服事表只寫名字也認得：Austin 對 Austin Lin', () {
+    expect(rosterNameMatchesUser('Austin', 'Austin Lin'), isTrue);
+    expect(rosterNameMatchesUser('austin lin', 'Austin Lin'), isTrue);
+    expect(rosterNameMatchesUser('Lin', 'Austin Lin'), isFalse);
+    expect(rosterNameMatchesUser('Austin Wang', 'Austin Lin'), isFalse);
+    expect(rosterNameMatchesUser('林', '林國泰'), isFalse);
+  });
 }

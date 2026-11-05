@@ -20,6 +20,7 @@ import '../../domain/season_window.dart';
 import '../widgets/recent_activity_row.dart';
 import '../widgets/add_to_home_card.dart';
 import '../../../roster/domain/entities/service_roster.dart';
+import '../../../roster/domain/roster_view_model.dart';
 import '../../../roster/presentation/providers/roster_provider.dart';
 import '../../../calendar/presentation/screens/calendar_screen.dart'
     deferred as calendar;
@@ -842,10 +843,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final linkedId = duty.personIdsByName[trimmed]?.trim() ?? '';
       if (normalizedId.isNotEmpty && linkedId == normalizedId) return true;
 
-      if (normalizedName.isNotEmpty &&
-          _normalizeName(trimmed) == normalizedName) {
-        return true;
-      }
+      if (rosterNameMatchesUser(trimmed, normalizedName)) return true;
     }
     return false;
   }
