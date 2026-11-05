@@ -160,6 +160,11 @@ void main() {
         RosterEntry(role: '敬拜主領', people: const ['台語']),
       ]);
       expect(doubleBookedPeople(day), {'Joe'});
+      final sameSpeaker = _day('s', [
+        RosterEntry(role: kTwSpeakerRole, people: const ['高士超']),
+        RosterEntry(role: kMwSpeakerRole, people: const ['高士超']),
+      ]);
+      expect(doubleBookedPeople(sameSpeaker), isEmpty, reason: '台華同一位講員');
       final t = buildRosterTable([day]);
       final joe = t.rows.single.cells.expand((c) => c).where((c) => c.text == 'Joe');
       expect(joe.every((c) => c.isConflict), isTrue);

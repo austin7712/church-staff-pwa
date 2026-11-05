@@ -308,8 +308,13 @@ RosterTableModel buildRosterTable(
 Set<String> doubleBookedPeople(ServiceRoster roster) {
   final seen = <String>{};
   final twice = <String>{};
+  // 同一位講員台語、華語都講是常態（兩堂各講一次），不算重複。
+  final speakers = <String>{};
   for (final duty in roster.duties) {
+    final isSpeaker =
+        duty.role == kTwSpeakerRole || duty.role == kMwSpeakerRole;
     for (final person in duty.people.map((p) => p.trim()).toSet()) {
+      if (isSpeaker && !speakers.add(person)) continue;
       if (person.isEmpty || isPlaceholderPerson(person)) continue;
       if (!seen.add(person)) twice.add(person);
     }
