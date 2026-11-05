@@ -164,6 +164,17 @@ class _RosterScreenState extends State<RosterScreen>
       title: Text(titleText),
       centerTitle: true,
       actions: [
+        // 放在標題列而不是清單上方：清單上多一列會讓檢視／編輯模式切換時
+        // 同一天的位置差一截（見 roster_scroll_anchor_test）。
+        IconButton(
+          icon: Icon(
+            _mineOnly ? Icons.person : Icons.person_outline,
+            color: _mineOnly ? kRosterMeBorder : null,
+          ),
+          isSelected: _mineOnly,
+          tooltip: _mineOnly ? '顯示全部服事' : '只看我的服事',
+          onPressed: () => setState(() => _mineOnly = !_mineOnly),
+        ),
         IconButton(
           icon: Icon(
             _tableMode ? Icons.view_agenda_outlined : Icons.table_rows_outlined,
@@ -261,7 +272,6 @@ class _RosterScreenState extends State<RosterScreen>
                   type: type,
                   tableMode: _tableMode,
                   mineOnly: _mineOnly,
-                  onToggleMine: () => setState(() => _mineOnly = !_mineOnly),
                 );
               }).toList(),
             );
@@ -276,14 +286,12 @@ class _RosterViewList extends StatefulWidget {
   final ServiceType type;
   final bool tableMode;
   final bool mineOnly;
-  final VoidCallback onToggleMine;
 
   const _RosterViewList({
     super.key,
     required this.type,
     required this.tableMode,
     required this.mineOnly,
-    required this.onToggleMine,
   });
 
   @override
@@ -356,11 +364,6 @@ class _RosterViewListState extends State<_RosterViewList>
     final userName = context.select<SessionProvider, String?>(
       (session) => session.currentUser?.name,
     );
-    final myDays = rosters
-        .where(
-          (r) => rolesForUser(r, userId: userId, userName: userName).isNotEmpty,
-        )
-        .length;
     final shown = widget.mineOnly
         ? rosters
               .where(
@@ -378,7 +381,7 @@ class _RosterViewListState extends State<_RosterViewList>
       body = const EmptyState(
         icon: Icons.event_available_outlined,
         message: '這段期間沒有排到你的服事',
-        hint: '按上方的「只看我的」可以回到完整的服事表',
+        hint: '再按一次右上角的人像按鈕，可以回到完整的服事表',
       );
     } else if (widget.tableMode) {
       body = RosterTableView(
@@ -390,7 +393,7 @@ class _RosterViewListState extends State<_RosterViewList>
       body = ListView.builder(
         key: anchorListKey,
         controller: anchorController,
-        padding: const EdgeInsets.only(top: 4, bottom: 20),
+        padding: const EdgeInsets.only(top: 12, bottom: 20),
         itemCount: shown.length,
         itemBuilder: (context, index) {
           final roster = shown[index];
@@ -410,34 +413,6 @@ class _RosterViewListState extends State<_RosterViewList>
       );
     }
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-          child: Row(
-            children: [
-              FilterChip(
-                label: const Text('只看我的'),
-                selected: widget.mineOnly,
-                onSelected: (_) => widget.onToggleMine(),
-                selectedColor: kRosterMeFill,
-                checkmarkColor: kRosterMeText,
-                side: BorderSide(
-                  color: widget.mineOnly ? kRosterMeBorder : Colors.grey[400]!,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  myDays > 0 ? '你有 $myDays 次服事，已用綠色標出' : '這段期間沒有排到你的服事',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(child: body),
-      ],
-    );
+    return body;
   }
 }

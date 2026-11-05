@@ -106,8 +106,6 @@ class DutyRow extends StatelessWidget {
         Expanded(
           // 一個名字一段（頓號跟在名字後面），斷行機會就只剩名字之間。
           child: Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            runSpacing: 2,
             children: [
               for (var i = 0; i < people.length; i++)
                 _person(people[i], i == people.length - 1),
