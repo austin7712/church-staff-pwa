@@ -175,12 +175,26 @@ class _RosterScreenState extends State<RosterScreen>
           tooltip: _mineOnly ? '顯示全部服事' : '只看我的服事',
           onPressed: () => setState(() => _mineOnly = !_mineOnly),
         ),
-        IconButton(
-          icon: Icon(
-            _tableMode ? Icons.view_agenda_outlined : Icons.table_rows_outlined,
+        // 有字的切換鈕：只有圖示的話，同工不知道可以切成表格。
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('卡片')),
+              ButtonSegment(value: true, label: Text('表格')),
+            ],
+            selected: {_tableMode},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) =>
+                setState(() => _tableMode = selection.first),
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 10),
+              ),
+            ),
           ),
-          tooltip: _tableMode ? '切換至卡片檢視' : '切換至表格檢視',
-          onPressed: () => setState(() => _tableMode = !_tableMode),
         ),
         if (canEdit)
           IconButton(
