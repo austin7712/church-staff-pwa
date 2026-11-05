@@ -322,6 +322,68 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
     }
   }
 
+  /// 把這段期間排好的人全部改回「待定」（講員不動），可以復原。
+  Future<void> _clearAll() async {
+    final rosters = _rosters;
+    if (rosters == null || _assigning) return;
+    final provider = context.read<RosterProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    final cleared = clearAssignments(rosters);
+    if (cleared.isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('這段期間沒有排好的人')));
+      return;
+    }
+    final label = '$_year 年${_period.label}';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('一鍵清空'),
+        content: Text(
+          '要把 $label 的 ${cleared.length} 週排好的人全部改回「待定」嗎？\n\n'
+          '講員和特殊事件不會動。清空後 10 秒內可以按「復原」。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _assigning = true);
+    final originals = {for (final r in rosters) r.id: r};
+    final before = [for (final r in cleared) originals[r.id]!];
+    try {
+      await provider.updateRosters(cleared);
+      if (!mounted) return;
+      await _load();
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 10),
+          content: Text('已清空 ${cleared.length} 週'),
+          action: SnackBarAction(
+            label: '復原',
+            onPressed: () async {
+              await provider.updateRosters(before);
+              if (mounted) await _load();
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('清空失敗：${mapErrorToUserMessage(e)}')),
+      );
+    } finally {
+      if (mounted) setState(() => _assigning = false);
+    }
+  }
+
   void _onSaved(ServiceRoster updated) {
     final rosters = _rosters;
     if (rosters == null) return;
@@ -428,21 +490,23 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: Row(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
                     child: Text(
                       '先整理「同工名單」（每一項可以排誰，愛餐整理是小組），再按「一鍵安排」把所有服事的空格一起公平地填上（講員不排）。會先預覽，確認後才寫入。',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
-                  const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: _assigning ? null : _editPool,
                     icon: const Icon(Icons.groups_outlined),
                     label: const Text('同工名單'),
                   ),
-                  const SizedBox(width: 8),
                   FilledButton.tonalIcon(
                     onPressed: _assigning ? null : _autoAssign,
                     icon: _assigning
@@ -453,6 +517,11 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
                           )
                         : const Icon(Icons.auto_fix_high_outlined),
                     label: const Text('一鍵安排'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _assigning ? null : _clearAll,
+                    icon: const Icon(Icons.cleaning_services_outlined),
+                    label: const Text('一鍵清空'),
                   ),
                 ],
               ),

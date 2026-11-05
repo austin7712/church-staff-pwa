@@ -380,4 +380,22 @@ void main() {
     expect(of('聖餐長老'), ['CT']);
     expect(of('敬拜讚美'), ['待定'], reason: 'CT 已經是司會報告');
   });
+
+  test('一鍵清空：排好的人改回待定，講員不動，沒排的週不算', () {
+    final cleared = clearAssignments([
+      _week(DateTime.utc(2027, 1, 3), {
+        '台語講員': ['李世榮'],
+        '音控': ['A', 'B'],
+        '收奉': ['待定'],
+      }),
+      _week(DateTime.utc(2027, 1, 10), {
+        '音控': ['待定'],
+      }),
+    ]);
+    expect(cleared, hasLength(1));
+    final duties = cleared.single.duties;
+    expect(duties[0].people, ['李世榮']);
+    expect(duties[1].people, ['待定']);
+    expect(duties[2].people, ['待定']);
+  });
 }

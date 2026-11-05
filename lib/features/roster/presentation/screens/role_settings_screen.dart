@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../domain/roster_view_model.dart';
 import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../providers/roster_provider.dart';
 import '../../../auth/presentation/providers/user_admin_provider.dart';
@@ -22,6 +23,7 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
   late Map<ServiceType, List<String>> _editingTemplates;
   late Map<ServiceType, Map<String, String>> _renamedRolesByType;
   late final Map<ServiceType, ScrollController> _scrollControllers;
+  ScrollController? _worshipScroll;
 
   @override
   void initState() {
@@ -37,6 +39,72 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
     _scrollControllers = {
       for (final type in ServiceType.values) type: ScrollController(),
     };
+    // 開頁時就記下來：之後的編輯不能影響「原本是誰包含誰」。
+    _coverAtOpen.length;
+    _childRolesAtOpen.length;
+  }
+
+  /// 主日崇拜包含兒童主日等項目時（見 [coveringServices]）：那一頁叫「總覽」、
+  /// 放第一個，跟服事表一致。子分頁（兒童主日…）只是總覽的一部分。
+  late final Map<String, String> _coverAtOpen = coveringServices({
+    for (final MapEntry(key: t, value: roles) in _editingTemplates.entries)
+      t.name: roles,
+  });
+
+  /// 分頁：總覽（主日崇拜全部）→ 主日（只有崇拜本身的項目）→ 兒童主日…，
+  /// 其他獨立的聚會照原本順序。
+  List<_RoleTab> get _tabs {
+    final parents = _coverAtOpen.values.toSet();
+    final active = ServiceType.active;
+    return [
+      for (final t in active.where((t) => parents.contains(t.name))) ...[
+        _RoleTab('總覽', t),
+        _RoleTab(t.label, t, worshipOnly: true),
+      ],
+      for (final t in active.where((t) => !parents.contains(t.name)))
+        _RoleTab(t.label, t),
+    ];
+  }
+
+  /// 「主日」分頁不放的項目：被兒童主日等分頁拿去的那幾項。
+  Set<String> _childRolesOf(ServiceType parent) => {
+    for (final MapEntry(key: child, value: p) in _coverAtOpen.entries)
+      if (p == parent.name) ...?_editingTemplates[ServiceType(child)],
+  };
+
+  /// 某個分頁看到的項目，以及每一項在聚會樣板裡的位置。
+  (List<String>, List<int>) _rolesForTab(_RoleTab tab) {
+    final all = _editingTemplates[tab.type] ?? const <String>[];
+    if (!tab.worshipOnly) return (all, [for (var i = 0; i < all.length; i++) i]);
+    final hidden = _childRolesOf(tab.type);
+    final idx = [
+      for (var i = 0; i < all.length; i++)
+        if (!hidden.contains(all[i])) i,
+    ];
+    return ([for (final i in idx) all[i]], idx);
+  }
+
+  late final Map<String, Set<String>> _childRolesAtOpen = {
+    for (final child in _coverAtOpen.keys)
+      child: {...?_editingTemplates[ServiceType(child)]},
+  };
+
+  /// 子分頁「新增」的項目也要在總覽裡，不然兒童主日等分頁看不到資料。
+  /// 在總覽刪掉的不會被加回來。
+  void _syncChildRolesIntoParent() {
+    for (final MapEntry(key: child, value: parent) in _coverAtOpen.entries) {
+      final childRoles = [
+        for (final r in _editingTemplates[ServiceType(child)] ?? const <String>[])
+          if (!_childRolesAtOpen[child]!.contains(r)) r,
+      ];
+      final parentRoles = _editingTemplates.putIfAbsent(
+        ServiceType(parent),
+        () => <String>[],
+      );
+      for (final role in childRoles) {
+        if (!parentRoles.contains(role)) parentRoles.add(role);
+      }
+    }
   }
 
   @override
@@ -44,10 +112,11 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
     for (final controller in _scrollControllers.values) {
       controller.dispose();
     }
+    _worshipScroll?.dispose();
     super.dispose();
   }
 
-  Future<void> _promptAddRole(ServiceType type) async {
+  Future<void> _promptAddRole(ServiceType type, {int? insertAt}) async {
     // controller 由 TextControllerScope 在 bottom sheet 子樹卸載時 dispose。
     final controller = TextEditingController();
     final name = await _showRoleNameDialog(
@@ -57,7 +126,12 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
     );
     if (name == null) return;
     setState(() {
-      (_editingTemplates[type] ??= []).add(name);
+      final list = _editingTemplates[type] ??= [];
+      if (insertAt != null && insertAt <= list.length) {
+        list.insert(insertAt, name);
+      } else {
+        list.add(name);
+      }
     });
   }
 
@@ -249,15 +323,13 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
         if (!didPop) _confirmDiscard();
       },
       child: DefaultTabController(
-        length: ServiceType.active.length,
+        length: _tabs.length,
         child: Scaffold(
           appBar: AppBar(
             title: const Text('服事項目設定'),
             bottom: TabBar(
-              isScrollable: ServiceType.active.length > 3,
-              tabs: ServiceType.active
-                  .map((type) => Tab(text: type.label))
-                  .toList(),
+              isScrollable: _tabs.length > 4,
+              tabs: _tabs.map((tab) => Tab(text: tab.label)).toList(),
             ),
             actions: [
               IconButton(
@@ -268,6 +340,7 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
                   final messenger = ScaffoldMessenger.of(context);
                   // 失敗一律留在這頁：改到一半的設定還在，再按一次就能重送。
                   PartialUpdateException? partial;
+                  _syncChildRolesIntoParent();
                   try {
                     await rosterProvider.updateTemplates(
                       _editingTemplates,
@@ -307,9 +380,12 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
             ],
           ),
           body: TabBarView(
-            children: ServiceType.active.map((type) {
-              final roles = _editingTemplates[type] ?? [];
-              final scrollController = _scrollControllers[type]!;
+            children: _tabs.map((tab) {
+              final type = tab.type;
+              final (roles, positions) = _rolesForTab(tab);
+              final scrollController = tab.worshipOnly
+                  ? (_worshipScroll ??= ScrollController())
+                  : _scrollControllers[type]!;
               return Column(
                 children: [
                   // 新教會第一次打開是一片空白，連「新增項目」在左下角都不容易看到。
@@ -348,27 +424,37 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
                                 if (newIndex > oldIndex) {
                                   newIndex -= 1;
                                 }
-                                final item = roles.removeAt(oldIndex);
-                                roles.insert(newIndex, item);
-                                _editingTemplates[type] = List<String>.from(
-                                  roles,
+                                final visible = List<String>.from(roles);
+                                final item = visible.removeAt(oldIndex);
+                                visible.insert(newIndex, item);
+                                // 只動這一頁看得到的項目，其他項目留在原位。
+                                final all = List<String>.from(
+                                  _editingTemplates[type] ?? const <String>[],
                                 );
+                                for (var k = 0; k < positions.length; k++) {
+                                  all[positions[k]] = visible[k];
+                                }
+                                _editingTemplates[type] = all;
                               });
                             },
                             itemBuilder: (context, index) {
                               return ListTile(
                                 key: ValueKey(
-                                  'role_${type.name}_${roles[index]}',
+                                  'role_${tab.label}_${type.name}_${roles[index]}',
                                 ),
                                 title: Text(roles[index]),
-                                onTap: () => _promptEditRole(type, index),
+                                onTap: () =>
+                                    _promptEditRole(type, positions[index]),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline),
                                       onPressed: () =>
-                                          _confirmRemoveRole(type, index),
+                                          _confirmRemoveRole(
+                                            type,
+                                            positions[index],
+                                          ),
                                     ),
                                     ReorderableDragStartListener(
                                       index: index,
@@ -387,7 +473,9 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
                     child: ListTile(
                       leading: const Icon(Icons.add),
                       title: const Text('新增項目'),
-                      onTap: () => _promptAddRole(type),
+                      onTap: () => tab.worshipOnly && positions.isNotEmpty
+                          ? _promptAddRole(type, insertAt: positions.last + 1)
+                          : _promptAddRole(type),
                     ),
                   ),
                 ],
@@ -398,4 +486,14 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
       ),
     );
   }
+}
+
+class _RoleTab {
+  const _RoleTab(this.label, this.type, {this.worshipOnly = false});
+
+  final String label;
+  final ServiceType type;
+
+  /// 「主日」分頁：同一份主日崇拜樣板，只是不顯示兒童主日等分頁的項目。
+  final bool worshipOnly;
 }
