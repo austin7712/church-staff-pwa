@@ -456,6 +456,35 @@ Map<String, String> monthlyGroupRotation({
   return result;
 }
 
+/// 「一鍵清空」：排好的人改回「待定」，講員不動。只回傳有改到的週次。
+List<ServiceRoster> clearAssignments(
+  List<ServiceRoster> rosters, {
+  Set<String> keepRoles = const {kTwSpeakerRole, kMwSpeakerRole},
+}) {
+  final result = <ServiceRoster>[];
+  for (final r in rosters) {
+    var changed = false;
+    final duties = [
+      for (final d in r.duties)
+        if (keepRoles.contains(d.role) || !d.people.any((p) {
+          final n = p.trim();
+          return n.isNotEmpty && n != kTbdPlaceholder;
+        }))
+          d
+        else
+          () {
+            changed = true;
+            return d.copyWith(
+              people: const [kTbdPlaceholder],
+              personIdsByName: const {},
+            );
+          }(),
+    ];
+    if (changed) result.add(r.copyWith(duties: duties));
+  }
+  return result;
+}
+
 /// 「同工名單」：每項服事可以排哪些人。由安排者維護（加新同工、拿掉不再
 /// 服事的人），一鍵安排只從這份名單挑。還沒整理過的服事項目，用今年做過
 /// 的人當預設（見 [withDefaults]）。
