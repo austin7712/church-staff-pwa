@@ -21,7 +21,11 @@ class RosterViewCard extends StatefulWidget {
     this.initiallyExpanded = false,
     this.userId,
     this.userName,
+    this.roleOrder = const [],
   });
+
+  /// 服事項目的顯示順序（服事項目設定的順序）。
+  final List<String> roleOrder;
 
   @override
   State<RosterViewCard> createState() => _RosterViewCardState();
@@ -166,7 +170,13 @@ class _RosterViewCardState extends State<RosterViewCard> {
         // 收合狀態下 ExpansionTile 會把 body 從樹上移除，所以獨立成 widget
         // 之後，看不到的服事列表就不會被 build。捲動時每張卡片只配置一個
         // widget 物件，而不是十幾列 Row/Text。
-        children: [_RosterViewCardBody(roster: roster, myNames: myNames)],
+        children: [
+          _RosterViewCardBody(
+            roster: roster,
+            myNames: myNames,
+            roleOrder: widget.roleOrder,
+          ),
+        ],
       ),
     );
   }
@@ -174,17 +184,22 @@ class _RosterViewCardState extends State<RosterViewCard> {
 
 /// [RosterViewCard] 展開後的服事項目列表。
 class _RosterViewCardBody extends StatelessWidget {
-  const _RosterViewCardBody({required this.roster, required this.myNames});
+  const _RosterViewCardBody({
+    required this.roster,
+    required this.myNames,
+    required this.roleOrder,
+  });
 
   final ServiceRoster roster;
   final Set<String> myNames;
+  final List<String> roleOrder;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Column(
-        children: roster.duties.map((duty) {
+        children: dutiesInOrder(roster.duties, roleOrder).map((duty) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             // dense：這裡沒有按鈕要撐觸控目標，列高就跟著文字走，一頁多看

@@ -18,6 +18,7 @@ class RosterTableView extends StatelessWidget {
     this.onCellTap,
     this.alwaysShowRoles = const [],
     this.showCounts = false,
+    this.roleOrder = const [],
   });
 
   final List<ServiceRoster> rosters;
@@ -35,6 +36,9 @@ class RosterTableView extends StatelessWidget {
   /// 表格下方列出這段期間每個人排了幾次。
   final bool showCounts;
 
+  /// 欄位順序（服事項目設定的順序）。
+  final List<String> roleOrder;
+
   bool get _editing => onCellTap != null;
 
   static const _divider = Color(0xFFE3E7ED);
@@ -48,6 +52,7 @@ class RosterTableView extends StatelessWidget {
       userName: userName,
       alwaysShowRoles: alwaysShowRoles,
       editing: _editing,
+      roleOrder: roleOrder.isEmpty ? alwaysShowRoles : roleOrder,
     );
     final muted = Colors.grey[700]!;
 

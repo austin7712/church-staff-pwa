@@ -222,4 +222,40 @@ void main() {
       );
     });
   });
+
+  group('照服事項目設定排序', () {
+    final day = _day('d', [
+      RosterEntry(role: '音控', people: const ['Hugo']),
+      RosterEntry(role: '收奉', people: const ['Kevin']),
+      RosterEntry(role: kMwSpeakerRole, people: const ['林國泰']),
+      RosterEntry(role: '司會報告', people: const ['CT']),
+      RosterEntry(role: '敬拜主領', people: const ['Joe']),
+      RosterEntry(role: '小組', people: const ['Ann']),
+    ]);
+    const order = [
+      kTwSpeakerRole,
+      kMwSpeakerRole,
+      '司會報告',
+      '敬拜主領',
+      '音控',
+      '收奉',
+      '聖餐',
+    ];
+
+    test('表格欄位', () {
+      final t = buildRosterTable([day], roleOrder: order);
+      expect(
+        t.columns.map((c) => c.header),
+        ['講員', '司會', '敬拜', '音控', '收奉', '小組'],
+      );
+    });
+
+    test('卡片：不在設定裡的放最後', () {
+      expect(
+        dutiesInOrder(day.duties, order).map((d) => d.role),
+        [kMwSpeakerRole, '司會報告', '敬拜主領', '音控', '收奉', '小組'],
+      );
+      expect(dutiesInOrder(day.duties, const []), same(day.duties));
+    });
+  });
 }

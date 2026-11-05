@@ -186,6 +186,7 @@ RosterTableModel buildRosterTable(
   String? userName,
   List<String> alwaysShowRoles = const [],
   bool editing = false,
+  List<String> roleOrder = const [],
 }) {
   bool isSpeaker(String role) =>
       role == kTwSpeakerRole || role == kMwSpeakerRole;
@@ -206,6 +207,8 @@ RosterTableModel buildRosterTable(
       if (!otherRoles.contains(d.role)) otherRoles.add(d.role);
     }
   }
+
+  sortRolesByOrder(otherRoles, roleOrder);
 
   final columns = <RosterTableColumn>[
     if (hasLanes)
@@ -355,4 +358,29 @@ List<MapEntry<String, int>> serviceCounts(List<ServiceRoster> rosters) {
       return byCount != 0 ? byCount : a.key.compareTo(b.key);
     });
   return list;
+}
+
+/// 照「服事項目設定」的順序排（[order]）。不在設定裡的放最後，保持原本先後。
+void sortRolesByOrder(List<String> roles, List<String> order) {
+  if (order.isEmpty) return;
+  final rank = {for (var i = 0; i < order.length; i++) order[i]: i};
+  final original = {for (var i = 0; i < roles.length; i++) roles[i]: i};
+  roles.sort((a, b) {
+    final ra = rank[a] ?? order.length;
+    final rb = rank[b] ?? order.length;
+    return ra != rb ? ra.compareTo(rb) : original[a]!.compareTo(original[b]!);
+  });
+}
+
+/// 卡片上的服事項目也照「服事項目設定」的順序。
+List<RosterEntry> dutiesInOrder(List<RosterEntry> duties, List<String> order) {
+  if (order.isEmpty) return duties;
+  final rank = {for (var i = 0; i < order.length; i++) order[i]: i};
+  final indexed = duties.asMap().entries.toList()
+    ..sort((a, b) {
+      final ra = rank[a.value.role] ?? order.length;
+      final rb = rank[b.value.role] ?? order.length;
+      return ra != rb ? ra.compareTo(rb) : a.key.compareTo(b.key);
+    });
+  return [for (final e in indexed) e.value];
 }

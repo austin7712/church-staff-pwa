@@ -384,6 +384,10 @@ class _RosterViewListState extends State<_RosterViewList>
     final userName = context.select<SessionProvider, String?>(
       (session) => session.currentUser?.name,
     );
+    // 服事項目設定的順序，卡片與表格都照它排。
+    final roleOrder = context.select<RosterProvider, List<String>>(
+      (provider) => provider.templates[widget.type] ?? const <String>[],
+    );
     final shown = widget.mineOnly
         ? rosters
               .where(
@@ -408,6 +412,7 @@ class _RosterViewListState extends State<_RosterViewList>
         rosters: shown,
         userId: userId,
         userName: userName,
+        roleOrder: roleOrder,
       );
     } else {
       body = ListView.builder(
@@ -427,6 +432,7 @@ class _RosterViewListState extends State<_RosterViewList>
               resolveEventColor: resolveEventColor,
               userId: userId,
               userName: userName,
+              roleOrder: roleOrder,
             ),
           );
         },
