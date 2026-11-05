@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../domain/roster_view_model.dart';
 import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../providers/roster_provider.dart';
 import '../../../auth/presentation/providers/user_admin_provider.dart';
@@ -37,6 +38,39 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
     _scrollControllers = {
       for (final type in ServiceType.values) type: ScrollController(),
     };
+  }
+
+  /// 主日崇拜包含兒童主日等項目時（見 [coveringServices]）：那一頁叫「總覽」、
+  /// 放第一個，跟服事表一致。子分頁（兒童主日…）只是總覽的一部分。
+  late final Map<String, String> _coverAtOpen = coveringServices({
+    for (final MapEntry(key: t, value: roles) in _editingTemplates.entries)
+      t.name: roles,
+  });
+
+  List<ServiceType> get _tabTypes {
+    final parents = _coverAtOpen.values.toSet();
+    final active = ServiceType.active;
+    return [
+      ...active.where((t) => parents.contains(t.name)),
+      ...active.where((t) => !parents.contains(t.name)),
+    ];
+  }
+
+  String _tabLabel(ServiceType t) =>
+      _coverAtOpen.values.contains(t.name) ? '總覽' : t.label;
+
+  /// 子分頁新增的項目也要在總覽裡，不然兒童主日等分頁看不到資料。
+  void _syncChildRolesIntoParent() {
+    for (final MapEntry(key: child, value: parent) in _coverAtOpen.entries) {
+      final childRoles = _editingTemplates[ServiceType(child)] ?? const [];
+      final parentRoles = _editingTemplates.putIfAbsent(
+        ServiceType(parent),
+        () => <String>[],
+      );
+      for (final role in childRoles) {
+        if (!parentRoles.contains(role)) parentRoles.add(role);
+      }
+    }
   }
 
   @override
@@ -249,15 +283,13 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
         if (!didPop) _confirmDiscard();
       },
       child: DefaultTabController(
-        length: ServiceType.active.length,
+        length: _tabTypes.length,
         child: Scaffold(
           appBar: AppBar(
             title: const Text('服事項目設定'),
             bottom: TabBar(
-              isScrollable: ServiceType.active.length > 3,
-              tabs: ServiceType.active
-                  .map((type) => Tab(text: type.label))
-                  .toList(),
+              isScrollable: _tabTypes.length > 4,
+              tabs: _tabTypes.map((type) => Tab(text: _tabLabel(type))).toList(),
             ),
             actions: [
               IconButton(
@@ -268,6 +300,7 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
                   final messenger = ScaffoldMessenger.of(context);
                   // 失敗一律留在這頁：改到一半的設定還在，再按一次就能重送。
                   PartialUpdateException? partial;
+                  _syncChildRolesIntoParent();
                   try {
                     await rosterProvider.updateTemplates(
                       _editingTemplates,
@@ -307,7 +340,7 @@ class _RoleSettingsScreenState extends State<RoleSettingsScreen> {
             ],
           ),
           body: TabBarView(
-            children: ServiceType.active.map((type) {
+            children: _tabTypes.map((type) {
               final roles = _editingTemplates[type] ?? [];
               final scrollController = _scrollControllers[type]!;
               return Column(
