@@ -11,7 +11,13 @@ class RosterEditTable extends StatelessWidget {
     required this.rosters,
     this.onSaved,
     this.embedded = false,
+    this.onlyRoles,
+    this.exceptRoles = const {},
   });
+
+  /// 見 [RosterTableView.onlyRoles]。只限制顯示的欄位，存檔時其他項目原封不動。
+  final Set<String>? onlyRoles;
+  final Set<String> exceptRoles;
 
   /// 見 [RosterTableView.embedded]。
   final bool embedded;
@@ -35,6 +41,8 @@ class RosterEditTable extends StatelessWidget {
       alwaysShowRoles: roles,
       showCounts: true,
       embedded: embedded,
+      onlyRoles: onlyRoles,
+      exceptRoles: exceptRoles,
       onCellTap: (row, column) =>
           _editCell(context, row.roster, roleForCell(row, column)),
     );

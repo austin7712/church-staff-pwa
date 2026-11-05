@@ -20,7 +20,15 @@ class RosterTableView extends StatelessWidget {
     this.showCounts = false,
     this.roleOrder = const [],
     this.embedded = false,
+    this.onlyRoles,
+    this.exceptRoles = const {},
   });
+
+  /// 只顯示這幾項（分頁只看兒童主日時）；null 是全部。
+  final Set<String>? onlyRoles;
+
+  /// 不顯示這幾項（「主日」分頁不放兒童主日等）。
+  final Set<String> exceptRoles;
 
   /// 放在別的清單裡（總覽一頁疊好幾張表）時不自己捲動。
   final bool embedded;
@@ -57,6 +65,8 @@ class RosterTableView extends StatelessWidget {
       alwaysShowRoles: alwaysShowRoles,
       editing: _editing,
       roleOrder: roleOrder.isEmpty ? alwaysShowRoles : roleOrder,
+      onlyRoles: onlyRoles,
+      exceptRoles: exceptRoles,
     );
     final muted = Colors.grey[700]!;
 

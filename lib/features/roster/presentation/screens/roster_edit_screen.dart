@@ -24,6 +24,7 @@ import 'role_settings_screen.dart' deferred as role_settings_screen;
 import '../../domain/roster_import.dart';
 import 'roster_import_summary.dart';
 import 'roster_arranger_screen.dart';
+import '../../domain/roster_view_model.dart';
 
 bool get _photoImportAvailable =>
     ChurchConfig.current.features.photoImport && canPickRosterPhotos;
@@ -45,10 +46,23 @@ class RosterEditScreen extends StatefulWidget {
     this.tableMode = false,
     this.onTableModeChanged,
     this.showOverview = false,
+    this.tabs,
   });
 
   /// 第一個分頁是「總覽」（跟檢視模式一致，兩邊共用同一個 TabController）。
+  /// 給了 [tabs] 就照 [tabs]。
   final bool showOverview;
+
+  /// 分頁（跟檢視模式同一份，見 [rosterTabs]）。
+  final List<RosterTabSpec>? tabs;
+
+  List<RosterTabSpec> get resolvedTabs =>
+      tabs ??
+      [
+        if (showOverview)
+          RosterTabSpec(label: '總覽', types: allowedTypes, isOverview: true),
+        for (final t in allowedTypes) RosterTabSpec(label: t.label, types: [t]),
+      ];
 
   @override
   State<RosterEditScreen> createState() => _RosterEditScreenState();
@@ -187,10 +201,9 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
             ? null
             : TabBar(
                 controller: widget.tabController,
-                isScrollable: allowedTypes.length > 3,
+                isScrollable: widget.resolvedTabs.length > 4,
                 tabs: [
-                  if (widget.showOverview) const Tab(text: '總覽'),
-                  ...allowedTypes.map((type) => Tab(text: type.label)),
+                  for (final tab in widget.resolvedTabs) Tab(text: tab.label),
                 ],
                 indicatorSize: TabBarIndicatorSize.label,
                 // 讓切換時的動畫更平滑
@@ -264,22 +277,32 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
             physics: const SnappyPageScrollPhysics(),
             controller: widget.tabController,
             children: [
-              if (widget.showOverview)
-                _OverviewEditor(
-                  key: const PageStorageKey('overview-edit'),
-                  types: allowedTypes,
-                  tableMode: widget.tableMode,
-                  onUseTable: widget.onTableModeChanged == null
-                      ? null
-                      : () => widget.onTableModeChanged!(true),
-                ),
-              ...allowedTypes.map((type) {
-                return _RosterList(
-                  key: PageStorageKey(type.toString()),
-                  type: type,
-                  tableMode: widget.tableMode,
-                );
-              }),
+              for (final tab in widget.resolvedTabs)
+                if (tab.isOverview && tab.types.length == 1)
+                  // 總覽只有一個聚會（主日崇拜包含全部項目）：就是那個聚會
+                  // 的完整編輯頁，卡片、表格都可以。
+                  _RosterList(
+                    key: PageStorageKey('overview-edit-${tab.type}'),
+                    type: tab.type,
+                    tableMode: widget.tableMode,
+                  )
+                else if (tab.isOverview)
+                  _OverviewEditor(
+                    key: const PageStorageKey('overview-edit'),
+                    types: tab.types,
+                    tableMode: widget.tableMode,
+                    onUseTable: widget.onTableModeChanged == null
+                        ? null
+                        : () => widget.onTableModeChanged!(true),
+                  )
+                else
+                  _RosterList(
+                    key: PageStorageKey('${tab.type}-${tab.label}'),
+                    type: tab.type,
+                    tableMode: widget.tableMode,
+                    onlyRoles: tab.onlyRoles,
+                    exceptRoles: tab.exceptRoles,
+                  ),
             ],
           );
         },
@@ -292,10 +315,18 @@ class _RosterList extends StatefulWidget {
   final ServiceType type;
   final bool tableMode;
 
+  /// 只編輯部分欄位的分頁（兒童主日等）：一律用表格，存檔時其他項目不動。
+  final Set<String>? onlyRoles;
+  final Set<String> exceptRoles;
+
+  bool get _filtered => onlyRoles != null || exceptRoles.isNotEmpty;
+
   const _RosterList({
     super.key,
     required this.type,
     this.tableMode = false,
+    this.onlyRoles,
+    this.exceptRoles = const {},
   });
 
   @override
@@ -316,6 +347,7 @@ class _RosterListState extends State<_RosterList>
   void initState() {
     super.initState();
     _provider = context.read<RosterProvider>();
+    if (widget._filtered) return;
     _provider.registerScrollAnchorCapture(widget.type, captureScrollAnchor);
     // 檢視模式切進來時，把當初頂端那一天挪回原本的位置：編輯清單多了一張匯入
     // 卡、每列多了兩顆按鈕，同一個 pixel offset 在這裡指到的是別天。
@@ -329,7 +361,9 @@ class _RosterListState extends State<_RosterList>
 
   @override
   void dispose() {
-    _provider.unregisterScrollAnchorCapture(widget.type, captureScrollAnchor);
+    if (!widget._filtered) {
+      _provider.unregisterScrollAnchorCapture(widget.type, captureScrollAnchor);
+    }
     super.dispose();
   }
 
@@ -361,8 +395,13 @@ class _RosterListState extends State<_RosterList>
       );
     }
 
-    if (widget.tableMode) {
-      return RosterEditTable(type: widget.type, rosters: rosters);
+    if (widget.tableMode || widget._filtered) {
+      return RosterEditTable(
+        type: widget.type,
+        rosters: rosters,
+        onlyRoles: widget.onlyRoles,
+        exceptRoles: widget.exceptRoles,
+      );
     }
 
     final showImport = isEditMode;

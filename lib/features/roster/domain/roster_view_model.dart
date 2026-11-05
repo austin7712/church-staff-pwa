@@ -1,3 +1,4 @@
+import '../../../core/types/service_type.dart';
 import 'entities/service_roster.dart';
 
 /// 服事表「檢視模式」用到的純邏輯：誰是我、哪些是佔位字、表格怎麼排。
@@ -185,22 +186,29 @@ RosterTableModel buildRosterTable(
   List<String> alwaysShowRoles = const [],
   bool editing = false,
   List<String> roleOrder = const [],
+  Set<String>? onlyRoles,
+  Set<String> exceptRoles = const {},
 }) {
   bool isSpeaker(String role) =>
       role == kTwSpeakerRole || role == kMwSpeakerRole;
+  bool allowed(String role) =>
+      (onlyRoles == null || onlyRoles.contains(role)) &&
+      !exceptRoles.contains(role);
   final hasLanes =
-      alwaysShowRoles.any(isSpeaker) ||
+      alwaysShowRoles.any((r) => isSpeaker(r) && allowed(r)) ||
       rosters.any(
-        (r) => r.duties.any((d) => isSpeaker(d.role) && d.people.isNotEmpty),
+        (r) => r.duties.any(
+          (d) => isSpeaker(d.role) && allowed(d.role) && d.people.isNotEmpty,
+        ),
       );
 
   final otherRoles = <String>[
     for (final role in alwaysShowRoles)
-      if (!isSpeaker(role)) role,
+      if (!isSpeaker(role) && allowed(role)) role,
   ];
   for (final r in rosters) {
     for (final d in r.duties) {
-      if (d.people.isEmpty) continue;
+      if (d.people.isEmpty || !allowed(d.role)) continue;
       if (d.role == kTwSpeakerRole || d.role == kMwSpeakerRole) continue;
       if (!otherRoles.contains(d.role)) otherRoles.add(d.role);
     }
@@ -386,4 +394,110 @@ List<RosterEntry> dutiesInOrder(List<RosterEntry> duties, List<String> order) {
       return ra != rb ? ra.compareTo(rb) : a.key.compareTo(b.key);
     });
   return [for (final e in indexed) e.value];
+}
+
+/// 服事項目已經全部包含在另一個聚會裡的聚會（例如「兒童主日」的項目也在
+/// 主日崇拜裡）：child → 包含它的聚會。這種聚會的分頁只是主日崇拜資料
+/// 的一部分，不另外排。
+Map<String, String> coveringServices(Map<String, List<String>> templates) {
+  final result = <String, String>{};
+  for (final MapEntry(key: child, value: roles) in templates.entries) {
+    if (roles.isEmpty) continue;
+    String? best;
+    for (final MapEntry(key: other, value: otherRoles) in templates.entries) {
+      if (other == child || otherRoles.length <= roles.length) continue;
+      if (!roles.every(otherRoles.contains)) continue;
+      if (best == null || otherRoles.length > templates[best]!.length) {
+        best = other;
+      }
+    }
+    if (best != null) result[child] = best;
+  }
+  return result;
+}
+
+/// 只留下某些服事項目（分頁只看兒童主日時用）。
+List<ServiceRoster> rostersWithRoles(
+  List<ServiceRoster> rosters, {
+  Set<String>? only,
+  Set<String> except = const {},
+}) => [
+  for (final r in rosters)
+    r.copyWith(
+      duties: [
+        for (final d in r.duties)
+          if ((only == null || only.contains(d.role)) &&
+              !except.contains(d.role))
+            d,
+      ],
+    ),
+];
+
+/// 服事表的一個分頁。
+///
+/// 主日崇拜已經包含兒童主日、幼兒主日、愛餐整理時：「總覽」就是主日崇拜的
+/// 全部項目；「主日」只看崇拜本身的項目；「兒童主日」等分頁只看那幾項。
+/// 資料都是同一份主日崇拜服事表，只是看的欄位不同。
+class RosterTabSpec {
+  const RosterTabSpec({
+    required this.label,
+    required this.types,
+    this.isOverview = false,
+    this.onlyRoles,
+    this.exceptRoles = const {},
+  });
+
+  final String label;
+
+  /// 這一頁讀哪些聚會的服事表（總覽可能好幾個，其他分頁一個）。
+  final List<ServiceType> types;
+  final bool isOverview;
+  final Set<String>? onlyRoles;
+  final Set<String> exceptRoles;
+
+  ServiceType get type => types.first;
+  bool get isFiltered => onlyRoles != null || exceptRoles.isNotEmpty;
+}
+
+List<RosterTabSpec> rosterTabs(
+  List<ServiceType> visible,
+  Map<ServiceType, List<String>> templates,
+) {
+  final cover = coveringServices({
+    for (final t in visible) t.name: templates[t] ?? const <String>[],
+  });
+  final byName = {for (final t in visible) t.name: t};
+  final roots = [
+    for (final t in visible)
+      if (cover[t.name] == null) t,
+  ];
+  final children = <ServiceType, List<ServiceType>>{
+    for (final r in roots) r: [],
+  };
+  for (final MapEntry(key: child, value: parent) in cover.entries) {
+    final p = byName[parent];
+    final c = byName[child];
+    if (p != null && c != null) children[p]?.add(c);
+  }
+  final anyChildren = children.values.any((c) => c.isNotEmpty);
+  final showOverview = roots.length > 1 || anyChildren;
+  return [
+    if (showOverview)
+      RosterTabSpec(label: '總覽', types: roots, isOverview: true),
+    for (final root in roots) ...[
+      RosterTabSpec(
+        label: root.label,
+        types: [root],
+        exceptRoles: {
+          for (final c in children[root]!) ...?templates[c],
+        },
+      ),
+      for (final c in children[root]!)
+        RosterTabSpec(
+          label: c.label,
+          types: [root],
+          onlyRoles: {...?templates[c]},
+        ),
+    ],
+  ];
 }

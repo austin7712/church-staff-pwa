@@ -173,6 +173,18 @@ class _RosterScreenState extends State<RosterScreen>
         if (!hidden.contains(type.name)) type,
     ];
     final allowedTypes = visibleTypes.isEmpty ? userTypes : visibleTypes;
+    // 分頁：主日崇拜包含兒童主日等項目時，「總覽」就是主日崇拜全部，
+    // 兒童主日等分頁只看自己那幾欄（見 [rosterTabs]）。
+    context.select<RosterProvider, String>(
+      (p) => [
+        for (final t in allowedTypes)
+          '${t.name}=${(p.templates[t] ?? const <String>[]).join(',')}',
+      ].join('|'),
+    );
+    final tabs = rosterTabs(
+      allowedTypes,
+      context.read<RosterProvider>().templates,
+    );
     // 標題不分本季／下季：對同工來說那只是「服事表」，範圍怎麼算他不用管。
     const titleText = '服事表';
     // select 而非 watch：否則每次 fetch 的 loading 開關都會重建整個 Scaffold
@@ -181,16 +193,14 @@ class _RosterScreenState extends State<RosterScreen>
       (provider) => provider.isEditMode,
     );
 
-    // 兩個以上的聚會才需要「總覽」：同一天各聚會放在一起看。
-    final showOverview = allowedTypes.length > 1;
-    _updateTabController(allowedTypes.length + (showOverview ? 1 : 0));
+    _updateTabController(tabs.length);
 
     if (isEditMode && _editReady && canEdit) {
       return roster_edit_screen.RosterEditScreen(
         onExit: _exitEditMode,
         tabController: _tabController,
         allowedTypes: allowedTypes,
-        showOverview: showOverview,
+        tabs: tabs,
         tableMode: _tableMode,
         onTableModeChanged: (value) => setState(() => _tableMode = value),
       );
@@ -241,12 +251,9 @@ class _RosterScreenState extends State<RosterScreen>
         tabs: allowedTypes.isEmpty
             ? null
             : TabBar(
-                isScrollable: allowedTypes.length > 3,
+                isScrollable: tabs.length > 4,
                 controller: _tabController,
-                tabs: [
-                  if (showOverview) const Tab(text: '總覽'),
-                  ...allowedTypes.map((type) => Tab(text: type.label)),
-                ],
+                tabs: [for (final tab in tabs) Tab(text: tab.label)],
                 indicatorSize: TabBarIndicatorSize.label,
                 splashFactory: NoSplash.splashFactory,
                 overlayColor: const WidgetStatePropertyAll(
@@ -268,7 +275,7 @@ class _RosterScreenState extends State<RosterScreen>
     }
 
     return DefaultTabController(
-      length: allowedTypes.length + (showOverview ? 1 : 0),
+      length: tabs.length,
       child: Scaffold(
         appBar: appBar,
         // 刻意不用 Consumer 包住整個 body：Consumer 會在每一次
@@ -321,21 +328,23 @@ class _RosterScreenState extends State<RosterScreen>
               physics: const SnappyPageScrollPhysics(),
               controller: _tabController,
               children: [
-                if (showOverview)
-                  _RosterOverviewList(
-                    key: const PageStorageKey('overview'),
-                    types: allowedTypes,
-                    tableMode: _tableMode,
-                    mineOnly: _mineOnly,
-                  ),
-                ...allowedTypes.map((type) {
-                  return _RosterViewList(
-                    key: PageStorageKey(type.toString()),
-                    type: type,
-                    tableMode: _tableMode,
-                    mineOnly: _mineOnly,
-                  );
-                }),
+                for (final tab in tabs)
+                  if (tab.isOverview)
+                    _RosterOverviewList(
+                      key: const PageStorageKey('overview'),
+                      types: tab.types,
+                      tableMode: _tableMode,
+                      mineOnly: _mineOnly,
+                    )
+                  else
+                    _RosterViewList(
+                      key: PageStorageKey('${tab.type}-${tab.label}'),
+                      type: tab.type,
+                      onlyRoles: tab.onlyRoles,
+                      exceptRoles: tab.exceptRoles,
+                      tableMode: _tableMode,
+                      mineOnly: _mineOnly,
+                    ),
               ],
             );
           },
@@ -349,12 +358,18 @@ class _RosterViewList extends StatefulWidget {
   final ServiceType type;
   final bool tableMode;
   final bool mineOnly;
+  final Set<String>? onlyRoles;
+  final Set<String> exceptRoles;
+
+  bool get _filtered => onlyRoles != null || exceptRoles.isNotEmpty;
 
   const _RosterViewList({
     super.key,
     required this.type,
     required this.tableMode,
     required this.mineOnly,
+    this.onlyRoles,
+    this.exceptRoles = const {},
   });
 
   @override
@@ -374,6 +389,8 @@ class _RosterViewListState extends State<_RosterViewList>
   void initState() {
     super.initState();
     _provider = context.read<RosterProvider>();
+    // 只看部分欄位的分頁跟主日崇拜共用同一份資料，捲動位置只記主日崇拜那頁。
+    if (widget._filtered) return;
     _provider.registerScrollAnchorCapture(widget.type, captureScrollAnchor);
     // 從編輯模式切回來時，把當初頂端那一天挪回原本的位置。
     final anchor = _provider.scrollAnchorFor(widget.type);
@@ -386,7 +403,9 @@ class _RosterViewListState extends State<_RosterViewList>
 
   @override
   void dispose() {
-    _provider.unregisterScrollAnchorCapture(widget.type, captureScrollAnchor);
+    if (!widget._filtered) {
+      _provider.unregisterScrollAnchorCapture(widget.type, captureScrollAnchor);
+    }
     super.dispose();
   }
 
@@ -431,8 +450,15 @@ class _RosterViewListState extends State<_RosterViewList>
     final roleOrder = context.select<RosterProvider, List<String>>(
       (provider) => provider.templates[widget.type] ?? const <String>[],
     );
+    final visible = widget._filtered
+        ? rostersWithRoles(
+            rosters,
+            only: widget.onlyRoles,
+            except: widget.exceptRoles,
+          )
+        : rosters;
     final shown = widget.mineOnly
-        ? rosters
+        ? visible
               .where(
                 (r) => rolesForUser(
                   r,
@@ -441,7 +467,7 @@ class _RosterViewListState extends State<_RosterViewList>
                 ).isNotEmpty,
               )
               .toList()
-        : rosters;
+        : visible;
 
     final Widget body;
     if (shown.isEmpty) {
@@ -456,6 +482,10 @@ class _RosterViewListState extends State<_RosterViewList>
         userId: userId,
         userName: userName,
         roleOrder: roleOrder,
+        // 服事項目設定裡的每一項都有一欄，還沒排的也看得出來。
+        alwaysShowRoles: roleOrder,
+        onlyRoles: widget.onlyRoles,
+        exceptRoles: widget.exceptRoles,
       );
     } else {
       body = ListView.builder(
@@ -550,13 +580,14 @@ class _RosterOverviewList extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
         children: [
           for (final type in types) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-              child: Text(
-                type.serviceName,
-                style: Theme.of(context).textTheme.titleMedium,
+            if (types.length > 1)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+                child: Text(
+                  type.serviceName,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
-            ),
             _overviewTable(
               rosters: [
                 for (final d in shownDays)
@@ -610,6 +641,7 @@ class _RosterOverviewList extends StatelessWidget {
       userId: userId,
       userName: userName,
       roleOrder: roleOrder,
+      alwaysShowRoles: roleOrder,
       embedded: true,
     );
   }
