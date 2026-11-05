@@ -6,6 +6,7 @@ import '../../domain/entities/event_option.dart';
 import '../../domain/entities/service_roster.dart';
 import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../../domain/repositories/roster_repository.dart';
+import '../../domain/roster_auto_assign.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../domain/staff_directory.dart';
 import '../../domain/roster_import.dart';
@@ -402,6 +403,42 @@ class RosterProvider with ChangeNotifier {
   /// [allowedTypes] 要傳呼叫者「改得動」的聚會別（[User.allowedRosterTypes]），
   /// 不是畫面上顯示的全部：多一個他無權寫的聚會別，整個 batch 都會被 rules 拒。
   /// 背景執行，失敗僅 log，不影響 UI。完成後觸發 fetchInitialData 讓新建的 roster 出現。
+  /// 一鍵安排的同工名單（見 [StaffPool]）。讀不到就當作還沒整理過。
+  Future<StaffPool> loadStaffPool(ServiceType type) async {
+    try {
+      return await _repository.getStaffPool(type);
+    } catch (e, st) {
+      log('讀取同工名單失敗', error: e, stackTrace: st);
+      return const StaffPool();
+    }
+  }
+
+  /// 儲存同工名單。只有管理員寫得進去；失敗往上丟，讓畫面告訴使用者。
+  Future<void> saveStaffPool(ServiceType type, StaffPool pool) =>
+      _repository.saveStaffPool(type, pool);
+
+  /// 排班模式：讀任意範圍（例如 2027 全年）的服事表。照同工排序排好，
+  /// 跟平常看到的一樣。不放進 [rosters]：那份只裝「本季」，首頁與檢視模式用。
+  Future<List<ServiceRoster>> loadRostersInRange(
+    DateTime from,
+    DateTime to,
+  ) async {
+    final rosters = await _repository.getRostersInRange(from, to);
+    return [for (final roster in rosters) _staffOrders.sort(roster)];
+  }
+
+  /// 排班模式：建立範圍內缺的空白週次，回傳建了幾筆。範圍跟本季重疊時，
+  /// 順便重抓本季資料，檢視模式才看得到新建的週次。
+  Future<int> createRostersInRange(
+    List<ServiceType> types,
+    DateTime from,
+    DateTime to,
+  ) async {
+    final created = await _repository.ensureRostersInRange(types, from, to);
+    if (created > 0) await fetchRosters();
+    return created;
+  }
+
   Future<void> ensureQuarterRostersForEditor(
     List<ServiceType> allowedTypes,
   ) async {

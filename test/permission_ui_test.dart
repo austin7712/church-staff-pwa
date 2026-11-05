@@ -140,7 +140,7 @@ Future<List<String>> _pumpRosterTabs(
         ChangeNotifierProvider<SessionProvider>.value(value: session),
         ChangeNotifierProvider<RosterProvider>.value(value: rosters),
       ],
-      child: const MaterialApp(home: RosterScreen()),
+      child: const MaterialApp(home: RosterScreen(initialTableMode: false)),
     ),
   );
   await tester.pumpAndSettle();
@@ -403,7 +403,7 @@ void main() {
         ),
       );
 
-      expect(tabs, ['青崇', '兒主']);
+      expect(tabs, ['總覽', '青崇', '兒主']);
     });
 
     testWidgets('管理員看得到全部', (tester) async {
@@ -412,7 +412,7 @@ void main() {
         user: _user(role: UserRole.admin),
       );
 
-      expect(tabs, ['主日', '青崇', '兒主']);
+      expect(tabs, ['總覽', '主日', '青崇', '兒主']);
     });
 
     testWidgets('沒有牧區的編輯者看到的是空狀態，不是全部', (tester) async {

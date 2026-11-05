@@ -78,9 +78,12 @@ Future<RosterProvider> _pumpRosterScreen(WidgetTester tester) async {
         ChangeNotifierProvider<RosterProvider>.value(value: rosters),
         ChangeNotifierProvider<UserAdminProvider>.value(value: users),
       ],
-      child: const MaterialApp(home: RosterScreen()),
+      child: const MaterialApp(home: RosterScreen(initialTableMode: false)),
     ),
   );
+  await tester.pumpAndSettle();
+  // 第一個分頁是「總覽」；這組測試看的是單一聚會的清單。
+  await tester.tap(find.widgetWithText(Tab, '主日'));
   await tester.pumpAndSettle();
   return rosters;
 }

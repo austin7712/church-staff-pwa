@@ -12,6 +12,7 @@ import '../../data/roster_photo.dart';
 import '../../data/roster_photo_picker.dart';
 import '../providers/roster_provider.dart';
 import '../widgets/roster_card.dart';
+import '../widgets/roster_toolbar.dart';
 import '../widgets/photo_import_progress.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/widgets/empty_state.dart';
@@ -22,6 +23,8 @@ import 'event_settings_screen.dart' deferred as event_settings_screen;
 import 'role_settings_screen.dart' deferred as role_settings_screen;
 import '../../domain/roster_import.dart';
 import 'roster_import_summary.dart';
+import 'roster_arranger_screen.dart';
+import '../../domain/roster_view_model.dart';
 
 bool get _photoImportAvailable =>
     ChurchConfig.current.features.photoImport && canPickRosterPhotos;
@@ -42,7 +45,24 @@ class RosterEditScreen extends StatefulWidget {
     required this.allowedTypes,
     this.tableMode = false,
     this.onTableModeChanged,
+    this.showOverview = false,
+    this.tabs,
   });
+
+  /// 第一個分頁是「總覽」（跟檢視模式一致，兩邊共用同一個 TabController）。
+  /// 給了 [tabs] 就照 [tabs]。
+  final bool showOverview;
+
+  /// 分頁（跟檢視模式同一份，見 [rosterTabs]）。
+  final List<RosterTabSpec>? tabs;
+
+  List<RosterTabSpec> get resolvedTabs =>
+      tabs ??
+      [
+        if (showOverview)
+          RosterTabSpec(label: '總覽', types: allowedTypes, isOverview: true),
+        for (final t in allowedTypes) RosterTabSpec(label: t.label, types: [t]),
+      ];
 
   @override
   State<RosterEditScreen> createState() => _RosterEditScreenState();
@@ -111,6 +131,15 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
     });
   }
 
+  void _openArranger(BuildContext context, List<ServiceType> types) {
+    if (types.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RosterArrangerScreen(allowedTypes: types),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final allowedTypes = widget.allowedTypes;
@@ -119,69 +148,71 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
     final isAdmin = context.select<SessionProvider, bool>((s) => s.isAdmin);
     const titleText = '編輯服事表';
 
+    final tools = <Widget>[
+      if (widget.onTableModeChanged != null)
+        RosterViewModeSwitch(
+          tableMode: widget.tableMode,
+          onChanged: widget.onTableModeChanged!,
+        ),
+      RosterToolButton(
+        icon: Icons.calendar_month_outlined,
+        label: '排班模式',
+        tooltip: '一次排整季、整年（例如下一年度）',
+        onPressed: () => _openArranger(context, allowedTypes),
+      ),
+      // settings 的寫入權在 firestore.rules 裡是 admin only，所以非 admin 看到
+      // 這兩顆按鈕只會按下去然後失敗 —— 不如不要顯示。
+      if (isAdmin) ...[
+        RosterToolButton(
+          icon: Icons.palette_outlined,
+          label: '事件選項',
+          tooltip: '事件選項設定（聖餐、聯合崇拜等標籤與顏色）',
+          onPressed: () => _loadAndPush(
+            context,
+            event_settings_screen.loadLibrary,
+            () => event_settings_screen.EventSettingsScreen(),
+          ),
+        ),
+        RosterToolButton(
+          icon: Icons.list_alt_outlined,
+          label: '服事項目',
+          tooltip: '服事項目設定（每週要排哪些服事、順序）',
+          onPressed: () => _loadAndPush(
+            context,
+            role_settings_screen.loadLibrary,
+            () => role_settings_screen.RoleSettingsScreen(),
+          ),
+        ),
+      ],
+    ];
+
     final appBar = AppBar(
       title: Text(titleText),
       centerTitle: true,
       actions: [
-        if (widget.onTableModeChanged != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('卡片')),
-                ButtonSegment(value: true, label: Text('表格')),
-              ],
-              selected: {widget.tableMode},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) =>
-                  widget.onTableModeChanged!(selection.first),
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                padding: WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 10),
-                ),
-              ),
-            ),
-          ),
-        if (isAdmin) ...[
-          IconButton(
-            icon: const Icon(Icons.palette_outlined),
-            tooltip: '事件選項設定',
-            onPressed: () => _loadAndPush(
-              context,
-              event_settings_screen.loadLibrary,
-              () => event_settings_screen.EventSettingsScreen(),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.list_alt_outlined),
-            tooltip: '服事項目設定',
-            onPressed: () => _loadAndPush(
-              context,
-              role_settings_screen.loadLibrary,
-              () => role_settings_screen.RoleSettingsScreen(),
-            ),
-          ),
-        ],
-        // 以前是 view_list 圖示，跟旁邊「服事項目設定」的清單圖示幾乎一樣，
-        // 照著「按清單圖示」的說明就會按到這顆、直接離開編輯模式。
         Tooltip(
           message: '切換至檢視模式',
           child: TextButton(onPressed: widget.onExit, child: const Text('完成')),
         ),
       ],
-      bottom: allowedTypes.isEmpty
-          ? null
-          : TabBar(
-              controller: widget.tabController,
-              isScrollable: allowedTypes.length > 3,
-              tabs: allowedTypes.map((type) => Tab(text: type.label)).toList(),
-              indicatorSize: TabBarIndicatorSize.label,
-              // 讓切換時的動畫更平滑
-              splashFactory: NoSplash.splashFactory,
-              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-            ),
+      bottom: rosterAppBarBottom(
+        tools: tools,
+        tabs: allowedTypes.isEmpty
+            ? null
+            : TabBar(
+                controller: widget.tabController,
+                isScrollable: widget.resolvedTabs.length > 4,
+                tabs: [
+                  for (final tab in widget.resolvedTabs) Tab(text: tab.label),
+                ],
+                indicatorSize: TabBarIndicatorSize.label,
+                // 讓切換時的動畫更平滑
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: const WidgetStatePropertyAll(
+                  Colors.transparent,
+                ),
+              ),
+      ),
     );
 
     if (allowedTypes.isEmpty) {
@@ -245,13 +276,34 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
             // 收尾動畫越久，「換完分頁馬上想往下滑卻沒反應」的窗口就越長。
             physics: const SnappyPageScrollPhysics(),
             controller: widget.tabController,
-            children: allowedTypes.map((type) {
-              return _RosterList(
-                key: PageStorageKey(type.toString()),
-                type: type,
-                tableMode: widget.tableMode,
-              );
-            }).toList(),
+            children: [
+              for (final tab in widget.resolvedTabs)
+                if (tab.isOverview && tab.types.length == 1)
+                  // 總覽只有一個聚會（主日崇拜包含全部項目）：就是那個聚會
+                  // 的完整編輯頁，卡片、表格都可以。
+                  _RosterList(
+                    key: PageStorageKey('overview-edit-${tab.type}'),
+                    type: tab.type,
+                    tableMode: widget.tableMode,
+                  )
+                else if (tab.isOverview)
+                  _OverviewEditor(
+                    key: const PageStorageKey('overview-edit'),
+                    types: tab.types,
+                    tableMode: widget.tableMode,
+                    onUseTable: widget.onTableModeChanged == null
+                        ? null
+                        : () => widget.onTableModeChanged!(true),
+                  )
+                else
+                  _RosterList(
+                    key: PageStorageKey('${tab.type}-${tab.label}'),
+                    type: tab.type,
+                    tableMode: widget.tableMode,
+                    onlyRoles: tab.onlyRoles,
+                    exceptRoles: tab.exceptRoles,
+                  ),
+            ],
           );
         },
       ),
@@ -263,10 +315,18 @@ class _RosterList extends StatefulWidget {
   final ServiceType type;
   final bool tableMode;
 
+  /// 只編輯部分欄位的分頁（兒童主日等）：一律用表格，存檔時其他項目不動。
+  final Set<String>? onlyRoles;
+  final Set<String> exceptRoles;
+
+  bool get _filtered => onlyRoles != null || exceptRoles.isNotEmpty;
+
   const _RosterList({
     super.key,
     required this.type,
     this.tableMode = false,
+    this.onlyRoles,
+    this.exceptRoles = const {},
   });
 
   @override
@@ -287,6 +347,7 @@ class _RosterListState extends State<_RosterList>
   void initState() {
     super.initState();
     _provider = context.read<RosterProvider>();
+    if (widget._filtered) return;
     _provider.registerScrollAnchorCapture(widget.type, captureScrollAnchor);
     // 檢視模式切進來時，把當初頂端那一天挪回原本的位置：編輯清單多了一張匯入
     // 卡、每列多了兩顆按鈕，同一個 pixel offset 在這裡指到的是別天。
@@ -300,7 +361,9 @@ class _RosterListState extends State<_RosterList>
 
   @override
   void dispose() {
-    _provider.unregisterScrollAnchorCapture(widget.type, captureScrollAnchor);
+    if (!widget._filtered) {
+      _provider.unregisterScrollAnchorCapture(widget.type, captureScrollAnchor);
+    }
     super.dispose();
   }
 
@@ -332,21 +395,31 @@ class _RosterListState extends State<_RosterList>
       );
     }
 
-    if (widget.tableMode) {
-      return RosterEditTable(type: widget.type, rosters: rosters);
+    if (widget.tableMode || widget._filtered) {
+      return RosterEditTable(
+        type: widget.type,
+        rosters: rosters,
+        onlyRoles: widget.onlyRoles,
+        exceptRoles: widget.exceptRoles,
+      );
     }
 
     final showImport = isEditMode;
+    // 編輯模式最上面兩張卡：排班模式、匯入。
+    final headerCount = showImport ? 2 : 0;
     return ListView.builder(
       key: anchorListKey,
       controller: anchorController,
       padding: const EdgeInsets.only(top: 12, bottom: 20),
-      itemCount: rosters.length + (showImport ? 1 : 0),
+      itemCount: rosters.length + headerCount,
       itemBuilder: (context, index) {
         if (showImport && index == 0) {
+          return _buildArrangerCard(context);
+        }
+        if (showImport && index == 1) {
           return _buildImportCard(context);
         }
-        final rosterIndex = index - (showImport ? 1 : 0);
+        final rosterIndex = index - headerCount;
         final roster = rosters[rosterIndex];
         return ScrollAnchorItem(
           key: ValueKey(roster.id),
@@ -357,6 +430,44 @@ class _RosterListState extends State<_RosterList>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildArrangerCard(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('排班模式', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    '一次排整季或整年（例如下一年度），先建立空白週次，再用表格填人。建議用電腦。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      RosterArrangerScreen(allowedTypes: [widget.type]),
+                ),
+              ),
+              icon: const Icon(Icons.calendar_month_outlined),
+              label: const Text('開啟'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -804,6 +915,61 @@ class _ImportJsonSheetState extends State<_ImportJsonSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 編輯模式的「總覽」：表格模式下各聚會一張可以點的表疊在一起，一次改完；
+/// 卡片模式請到各聚會分頁改（同一天好幾個聚會的卡片疊在一起不好操作）。
+class _OverviewEditor extends StatelessWidget {
+  const _OverviewEditor({
+    super.key,
+    required this.types,
+    required this.tableMode,
+    required this.onUseTable,
+  });
+
+  final List<ServiceType> types;
+  final bool tableMode;
+  final VoidCallback? onUseTable;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!tableMode) {
+      return EmptyState(
+        icon: Icons.table_rows_outlined,
+        message: '總覽請用「表格」編輯',
+        hint: '表格可以一次改所有聚會；要用卡片的話，請到上方各聚會的分頁。',
+        action: onUseTable == null
+            ? null
+            : FilledButton.icon(
+                onPressed: onUseTable,
+                icon: const Icon(Icons.table_rows_outlined),
+                label: const Text('切換到表格'),
+              ),
+      );
+    }
+    final all = context.select<RosterProvider, List<ServiceRoster>>(
+      (provider) => provider.rosters,
+    );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+      children: [
+        for (final type in types) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+            child: Text(
+              type.serviceName,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          RosterEditTable(
+            type: type,
+            rosters: [for (final r in all) if (r.type == type) r],
+            embedded: true,
+          ),
+        ],
+      ],
     );
   }
 }

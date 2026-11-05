@@ -8,6 +8,7 @@ import '../../domain/entities/event_option.dart';
 import '../../domain/entities/service_roster.dart';
 import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../../../auth/presentation/providers/user_admin_provider.dart';
+import '../../../auth/presentation/providers/group_settings_provider.dart';
 import '../providers/roster_provider.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/widgets/settings_bottom_sheet.dart';
@@ -28,7 +29,9 @@ part '_roster_edit_table.dart';
 /// 一律往上丟（見 [RosterProvider.updateRoster]），不會變成整頁的錯誤畫面。
 ///
 /// [ranking] 是選人視窗裡拖過的順序，provider 會先存它再存這一天。
-Future<void> _saveRoster(
+///
+/// 回傳有沒有存成功（排班模式要知道才更新自己那份資料）。
+Future<bool> _saveRoster(
   BuildContext context,
   ServiceRoster roster, {
   StaffRanking? ranking,
@@ -36,8 +39,10 @@ Future<void> _saveRoster(
   final messenger = ScaffoldMessenger.of(context);
   try {
     await context.read<RosterProvider>().updateRoster(roster, ranking: ranking);
+    return true;
   } catch (e) {
     showWriteFailure(messenger, '更新', e);
+    return false;
   }
 }
 
@@ -469,6 +474,22 @@ Future<_PeopleOptions> _loadSelectablePeopleFor(
   String? role,
 ) async {
   final provider = context.read<RosterProvider>();
+  if (role != null && isGroupRole(role)) {
+    final groups = allSmallGroups(context.read<GroupSettingsProvider>());
+    return _PeopleOptions(
+      options: [
+        placeholderPerson,
+        ...groups,
+        for (final e in extras)
+          if (e.trim().isNotEmpty &&
+              e.trim() != placeholderPerson &&
+              !groups.contains(e.trim()))
+            e.trim(),
+      ],
+      allUserNames: groups.toSet(),
+      userIdsByName: const {},
+    );
+  }
   final staff = StaffDirectory.fromUsers(
     await context.read<UserAdminProvider>().getUsers(),
     rosterType,

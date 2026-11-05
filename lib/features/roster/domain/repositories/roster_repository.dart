@@ -2,6 +2,7 @@ import '../entities/event_option.dart';
 import '../entities/service_roster.dart';
 import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../staff_order.dart';
+import '../roster_auto_assign.dart';
 
 abstract class RosterRepository {
   Future<List<ServiceRoster>> getUpcomingRosters();
@@ -16,6 +17,24 @@ abstract class RosterRepository {
   /// [allowedTypes] 是必填而不是預設全部：batch 是原子的，只要裡面混進一筆呼叫
   /// 者無權寫入的聚會別，整批都會被 rules 打回，連他自己那本也補不出來。
   Future<void> ensureQuarterRosters(List<ServiceType> allowedTypes);
+
+  /// 排班模式：讀 [from]～[to]（含）之間的服事表，不受「本季」範圍限制。
+  Future<List<ServiceRoster>> getRostersInRange(DateTime from, DateTime to);
+
+  /// 排班模式：把 [from]～[to] 之間 [types] 缺的週次補成空白服事表
+  /// （照服事項目設定）。已經有的週不動。回傳新建了幾筆。
+  Future<int> ensureRostersInRange(
+    List<ServiceType> types,
+    DateTime from,
+    DateTime to,
+  );
+
+  /// 一鍵安排用的「同工名單」（每個聚會、每項服事可以排誰）。
+  /// 存在 settings/auto_assign；還沒存過就是空的。
+  Future<StaffPool> getStaffPool(ServiceType type);
+
+  /// 只有管理員寫得進去（settings 的規則）；其他人寫不進去時往上丟。
+  Future<void> saveStaffPool(ServiceType type, StaffPool pool);
 
   Future<void> updateRoster(ServiceRoster roster);
 

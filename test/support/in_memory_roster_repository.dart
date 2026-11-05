@@ -5,6 +5,8 @@ import 'package:church_staff_pwa/features/roster/domain/entities/event_option.da
 import 'package:church_staff_pwa/features/roster/domain/entities/service_roster.dart';
 import 'package:church_staff_pwa/features/roster/domain/repositories/roster_repository.dart';
 import 'package:church_staff_pwa/features/roster/domain/staff_order.dart';
+import 'package:church_staff_pwa/features/roster/domain/roster_schedule.dart';
+import 'package:church_staff_pwa/features/roster/domain/roster_auto_assign.dart';
 
 /// 測試共用的 [RosterRepository]：資料放在記憶體裡，讀寫照實做。
 ///
@@ -103,6 +105,47 @@ class InMemoryRosterRepository implements RosterRepository {
   Future<void> ensureQuarterRosters(List<ServiceType> allowedTypes) async {
     ensureCallCount++;
     ensureTypes = allowedTypes;
+  }
+
+  @override
+  Future<List<ServiceRoster>> getRostersInRange(
+    DateTime from,
+    DateTime to,
+  ) async {
+    return rosters
+        .where((r) => !r.date.isBefore(from) && !r.date.isAfter(to))
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+  }
+
+  @override
+  Future<int> ensureRostersInRange(
+    List<ServiceType> types,
+    DateTime from,
+    DateTime to,
+  ) async {
+    final missing = planRostersInRange(
+      from: from,
+      to: to,
+      types: types,
+      templates: templates,
+      existing: rosters,
+    );
+    for (final roster in missing) {
+      _store(roster);
+    }
+    return missing.length;
+  }
+
+  final Map<ServiceType, StaffPool> staffPools = {};
+
+  @override
+  Future<StaffPool> getStaffPool(ServiceType type) async =>
+      staffPools[type] ?? const StaffPool();
+
+  @override
+  Future<void> saveStaffPool(ServiceType type, StaffPool pool) async {
+    staffPools[type] = pool;
   }
 
   @override

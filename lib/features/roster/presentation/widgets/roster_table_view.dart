@@ -18,7 +18,20 @@ class RosterTableView extends StatelessWidget {
     this.onCellTap,
     this.alwaysShowRoles = const [],
     this.showCounts = false,
+    this.roleOrder = const [],
+    this.embedded = false,
+    this.onlyRoles,
+    this.exceptRoles = const {},
   });
+
+  /// 只顯示這幾項（分頁只看兒童主日時）；null 是全部。
+  final Set<String>? onlyRoles;
+
+  /// 不顯示這幾項（「主日」分頁不放兒童主日等）。
+  final Set<String> exceptRoles;
+
+  /// 放在別的清單裡（總覽一頁疊好幾張表）時不自己捲動。
+  final bool embedded;
 
   final List<ServiceRoster> rosters;
   final String? userId;
@@ -35,6 +48,9 @@ class RosterTableView extends StatelessWidget {
   /// 表格下方列出這段期間每個人排了幾次。
   final bool showCounts;
 
+  /// 欄位順序（服事項目設定的順序）。
+  final List<String> roleOrder;
+
   bool get _editing => onCellTap != null;
 
   static const _divider = Color(0xFFE3E7ED);
@@ -48,11 +64,14 @@ class RosterTableView extends StatelessWidget {
       userName: userName,
       alwaysShowRoles: alwaysShowRoles,
       editing: _editing,
+      roleOrder: roleOrder.isEmpty ? alwaysShowRoles : roleOrder,
+      onlyRoles: onlyRoles,
+      exceptRoles: exceptRoles,
     );
     final muted = Colors.grey[700]!;
 
     final widths = <int, TableColumnWidth>{
-      0: const FixedColumnWidth(42),
+      0: const FixedColumnWidth(48),
       if (model.hasLanes) 1: const FixedColumnWidth(18),
     };
     final firstRoleCol = model.hasLanes ? 2 : 1;
@@ -145,10 +164,7 @@ class RosterTableView extends StatelessWidget {
       );
     }
 
-    return ListView(
-      controller: controller,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-      children: [
+    final children = <Widget>[
         Card(
           margin: EdgeInsets.zero,
           elevation: 1,
@@ -181,7 +197,17 @@ class RosterTableView extends StatelessWidget {
             ),
           ),
         if (showCounts) _CountsCard(rosters: rosters),
-      ],
+    ];
+    if (embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      );
+    }
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+      children: children,
     );
   }
 
@@ -300,6 +326,7 @@ class _DateCell extends StatelessWidget {
       children: [
         Text(
           '${roster.date.month}/${roster.date.day}',
+          softWrap: false,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
         ),
         if (special != null)

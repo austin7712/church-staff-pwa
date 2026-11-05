@@ -9,6 +9,7 @@ import '../providers/roster_provider.dart';
 import '../widgets/roster_view_card.dart';
 import '../widgets/roster_table_view.dart';
 import '../widgets/roster_view_colors.dart';
+import '../widgets/roster_toolbar.dart';
 import '../../domain/roster_view_model.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/widgets/empty_state.dart';
@@ -17,9 +18,16 @@ import '../../../../core/utils/snappy_page_scroll_physics.dart';
 import 'roster_edit_screen.dart' deferred as roster_edit_screen;
 
 class RosterScreen extends StatefulWidget {
-  const RosterScreen({super.key, this.allowEdit = true});
+  const RosterScreen({
+    super.key,
+    this.allowEdit = true,
+    this.initialTableMode = true,
+  });
 
   final bool allowEdit;
+
+  /// 一開始用表格還是卡片。預設表格（一眼看完整季）。
+  final bool initialTableMode;
 
   @override
   State<RosterScreen> createState() => _RosterScreenState();
@@ -31,8 +39,8 @@ class _RosterScreenState extends State<RosterScreen>
   bool _isLoadingEdit = false;
   TabController? _tabController;
 
-  /// 檢視方式：卡片（預設）或像紙本一樣的表格。各分頁共用同一個選擇。
-  bool _tableMode = false;
+  /// 檢視方式：表格（預設）或卡片。各分頁共用同一個選擇。
+  late bool _tableMode = widget.initialTableMode;
 
   /// 只列出排到自己的那幾天。
   bool _mineOnly = false;
@@ -140,8 +148,43 @@ class _RosterScreenState extends State<RosterScreen>
     // 「能不能改」，牧區決定「能改哪一本」。
     final canEditRoster = session.canEditRoster;
     final canEdit = canEditRoster && widget.allowEdit;
-    final allowedTypes =
+    final userTypes =
         session.currentUser?.allowedRosterTypes ?? const <ServiceType>[];
+    // 沒有任何服事項目、也沒有排過人的聚會不列出來（例如兒童主日、愛餐整理
+    // 已經併進主日的服事項目裡，原本的分頁只剩空白週次）。
+    // 回傳字串（不是 Set）：select 用 == 比較，才不會每次通知都重建。
+    final hiddenKey = context.select<RosterProvider, String>((p) {
+      final templates = p.templates;
+      if (!templates.values.any((roles) => roles.isNotEmpty)) return '';
+      return [
+        for (final type in userTypes)
+          if ((templates[type] ?? const <String>[]).isEmpty &&
+              !p
+                  .getRostersByType(type)
+                  .any((r) => r.duties.any((d) => d.people.isNotEmpty)))
+            type.name,
+      ].join('\n');
+    });
+    final hidden = hiddenKey.isEmpty
+        ? const <String>{}
+        : hiddenKey.split('\n').toSet();
+    final visibleTypes = [
+      for (final type in userTypes)
+        if (!hidden.contains(type.name)) type,
+    ];
+    final allowedTypes = visibleTypes.isEmpty ? userTypes : visibleTypes;
+    // 分頁：主日崇拜包含兒童主日等項目時，「總覽」就是主日崇拜全部，
+    // 兒童主日等分頁只看自己那幾欄（見 [rosterTabs]）。
+    context.select<RosterProvider, String>(
+      (p) => [
+        for (final t in allowedTypes)
+          '${t.name}=${(p.templates[t] ?? const <String>[]).join(',')}',
+      ].join('|'),
+    );
+    final tabs = rosterTabs(
+      allowedTypes,
+      context.read<RosterProvider>().templates,
+    );
     // 標題不分本季／下季：對同工來說那只是「服事表」，範圍怎麼算他不用管。
     const titleText = '服事表';
     // select 而非 watch：否則每次 fetch 的 loading 開關都會重建整個 Scaffold
@@ -150,88 +193,74 @@ class _RosterScreenState extends State<RosterScreen>
       (provider) => provider.isEditMode,
     );
 
-    _updateTabController(allowedTypes.length);
+    _updateTabController(tabs.length);
 
     if (isEditMode && _editReady && canEdit) {
       return roster_edit_screen.RosterEditScreen(
         onExit: _exitEditMode,
         tabController: _tabController,
         allowedTypes: allowedTypes,
+        tabs: tabs,
         tableMode: _tableMode,
         onTableModeChanged: (value) => setState(() => _tableMode = value),
       );
     }
 
+    final tools = <Widget>[
+      FilterChip(
+        label: const Text('只看我的'),
+        tooltip: _mineOnly ? '顯示全部服事' : '只看排到我的日子',
+        selected: _mineOnly,
+        onSelected: (_) => setState(() => _mineOnly = !_mineOnly),
+        showCheckmark: false,
+        avatar: Icon(
+          _mineOnly ? Icons.person : Icons.person_outline,
+          size: 18,
+          color: _mineOnly ? kRosterMeText : null,
+        ),
+        selectedColor: kRosterMeFill,
+        side: BorderSide(
+          color: _mineOnly ? kRosterMeBorder : Colors.grey[400]!,
+        ),
+        labelStyle: TextStyle(
+          color: _mineOnly ? kRosterMeText : null,
+          fontWeight: _mineOnly ? FontWeight.bold : null,
+        ),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      RosterViewModeSwitch(
+        tableMode: _tableMode,
+        onChanged: (value) => setState(() => _tableMode = value),
+      ),
+      if (canEdit)
+        RosterToolButton(
+          icon: Icons.edit_outlined,
+          label: '編輯',
+          tooltip: '切換至編輯模式',
+          onPressed: () =>
+              _loadEditLibrary(context, roster_edit_screen.loadLibrary),
+        ),
+    ];
+
     final appBar = AppBar(
       title: Text(titleText),
       centerTitle: true,
-      actions: [
-        // 放在標題列而不是清單上方：清單上多一列會讓檢視／編輯模式切換時
-        // 同一天的位置差一截（見 roster_scroll_anchor_test）。
-        Padding(
-          padding: const EdgeInsets.only(right: 6),
-          child: FilterChip(
-            label: const Text('只看我的'),
-            tooltip: _mineOnly ? '顯示全部服事' : '只看我的服事',
-            selected: _mineOnly,
-            onSelected: (_) => setState(() => _mineOnly = !_mineOnly),
-            showCheckmark: false,
-            avatar: Icon(
-              _mineOnly ? Icons.person : Icons.person_outline,
-              size: 18,
-              color: _mineOnly ? kRosterMeText : null,
-            ),
-            selectedColor: kRosterMeFill,
-            side: BorderSide(
-              color: _mineOnly ? kRosterMeBorder : Colors.grey[400]!,
-            ),
-            labelStyle: TextStyle(
-              color: _mineOnly ? kRosterMeText : null,
-              fontWeight: _mineOnly ? FontWeight.bold : null,
-            ),
-            visualDensity: VisualDensity.compact,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ),
-        // 有字的切換鈕：只有圖示的話，同工不知道可以切成表格。
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('卡片')),
-              ButtonSegment(value: true, label: Text('表格')),
-            ],
-            selected: {_tableMode},
-            showSelectedIcon: false,
-            onSelectionChanged: (selection) =>
-                setState(() => _tableMode = selection.first),
-            style: const ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: WidgetStatePropertyAll(
-                EdgeInsets.symmetric(horizontal: 10),
+      bottom: rosterAppBarBottom(
+        tools: tools,
+        tabs: allowedTypes.isEmpty
+            ? null
+            : TabBar(
+                isScrollable: tabs.length > 4,
+                controller: _tabController,
+                tabs: [for (final tab in tabs) Tab(text: tab.label)],
+                indicatorSize: TabBarIndicatorSize.label,
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: const WidgetStatePropertyAll(
+                  Colors.transparent,
+                ),
               ),
-            ),
-          ),
-        ),
-        if (canEdit)
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: '切換至編輯模式',
-            onPressed: () =>
-                _loadEditLibrary(context, roster_edit_screen.loadLibrary),
-          ),
-      ],
-      bottom: allowedTypes.isEmpty
-          ? null
-          : TabBar(
-              isScrollable: allowedTypes.length > 3,
-              controller: _tabController,
-              tabs: allowedTypes.map((type) => Tab(text: type.label)).toList(),
-              indicatorSize: TabBarIndicatorSize.label,
-              splashFactory: NoSplash.splashFactory,
-              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-            ),
+      ),
     );
 
     if (allowedTypes.isEmpty) {
@@ -246,7 +275,7 @@ class _RosterScreenState extends State<RosterScreen>
     }
 
     return DefaultTabController(
-      length: allowedTypes.length,
+      length: tabs.length,
       child: Scaffold(
         appBar: appBar,
         // 刻意不用 Consumer 包住整個 body：Consumer 會在每一次
@@ -298,14 +327,25 @@ class _RosterScreenState extends State<RosterScreen>
               // 收尾動畫越久，「換完分頁馬上想往下滑卻沒反應」的窗口就越長。
               physics: const SnappyPageScrollPhysics(),
               controller: _tabController,
-              children: allowedTypes.map((type) {
-                return _RosterViewList(
-                  key: PageStorageKey(type.toString()),
-                  type: type,
-                  tableMode: _tableMode,
-                  mineOnly: _mineOnly,
-                );
-              }).toList(),
+              children: [
+                for (final tab in tabs)
+                  if (tab.isOverview)
+                    _RosterOverviewList(
+                      key: const PageStorageKey('overview'),
+                      types: tab.types,
+                      tableMode: _tableMode,
+                      mineOnly: _mineOnly,
+                    )
+                  else
+                    _RosterViewList(
+                      key: PageStorageKey('${tab.type}-${tab.label}'),
+                      type: tab.type,
+                      onlyRoles: tab.onlyRoles,
+                      exceptRoles: tab.exceptRoles,
+                      tableMode: _tableMode,
+                      mineOnly: _mineOnly,
+                    ),
+              ],
             );
           },
         ),
@@ -318,12 +358,18 @@ class _RosterViewList extends StatefulWidget {
   final ServiceType type;
   final bool tableMode;
   final bool mineOnly;
+  final Set<String>? onlyRoles;
+  final Set<String> exceptRoles;
+
+  bool get _filtered => onlyRoles != null || exceptRoles.isNotEmpty;
 
   const _RosterViewList({
     super.key,
     required this.type,
     required this.tableMode,
     required this.mineOnly,
+    this.onlyRoles,
+    this.exceptRoles = const {},
   });
 
   @override
@@ -343,6 +389,8 @@ class _RosterViewListState extends State<_RosterViewList>
   void initState() {
     super.initState();
     _provider = context.read<RosterProvider>();
+    // 只看部分欄位的分頁跟主日崇拜共用同一份資料，捲動位置只記主日崇拜那頁。
+    if (widget._filtered) return;
     _provider.registerScrollAnchorCapture(widget.type, captureScrollAnchor);
     // 從編輯模式切回來時，把當初頂端那一天挪回原本的位置。
     final anchor = _provider.scrollAnchorFor(widget.type);
@@ -355,7 +403,9 @@ class _RosterViewListState extends State<_RosterViewList>
 
   @override
   void dispose() {
-    _provider.unregisterScrollAnchorCapture(widget.type, captureScrollAnchor);
+    if (!widget._filtered) {
+      _provider.unregisterScrollAnchorCapture(widget.type, captureScrollAnchor);
+    }
     super.dispose();
   }
 
@@ -378,7 +428,7 @@ class _RosterViewListState extends State<_RosterViewList>
         icon: Icons.event_busy_outlined,
         message: '此類別目前沒有服事資訊',
         hint: canEdit
-            ? '按右上角的鉛筆開始編輯：先按右上角中間的清單圖示「服事項目設定」新增服事項目，再到各日期按「新增服事項目」排班。'
+            ? '按上方的「編輯」開始：先按「服事項目」新增服事項目，再到各日期按「新增服事項目」排班，或用「排班模式」一次排整季、整年。'
             : '管理員建立後會在這裡顯示',
       );
     }
@@ -396,8 +446,19 @@ class _RosterViewListState extends State<_RosterViewList>
     final userName = context.select<SessionProvider, String?>(
       (session) => session.currentUser?.name,
     );
+    // 服事項目設定的順序，卡片與表格都照它排。
+    final roleOrder = context.select<RosterProvider, List<String>>(
+      (provider) => provider.templates[widget.type] ?? const <String>[],
+    );
+    final visible = widget._filtered
+        ? rostersWithRoles(
+            rosters,
+            only: widget.onlyRoles,
+            except: widget.exceptRoles,
+          )
+        : rosters;
     final shown = widget.mineOnly
-        ? rosters
+        ? visible
               .where(
                 (r) => rolesForUser(
                   r,
@@ -406,20 +467,25 @@ class _RosterViewListState extends State<_RosterViewList>
                 ).isNotEmpty,
               )
               .toList()
-        : rosters;
+        : visible;
 
     final Widget body;
     if (shown.isEmpty) {
       body = const EmptyState(
         icon: Icons.event_available_outlined,
         message: '這段期間沒有排到你的服事',
-        hint: '再按一次右上角的「只看我的」，可以回到完整的服事表',
+        hint: '再按一次上方的「只看我的」，可以回到完整的服事表',
       );
     } else if (widget.tableMode) {
       body = RosterTableView(
         rosters: shown,
         userId: userId,
         userName: userName,
+        roleOrder: roleOrder,
+        // 服事項目設定裡的每一項都有一欄，還沒排的也看得出來。
+        alwaysShowRoles: roleOrder,
+        onlyRoles: widget.onlyRoles,
+        exceptRoles: widget.exceptRoles,
       );
     } else {
       body = ListView.builder(
@@ -439,6 +505,7 @@ class _RosterViewListState extends State<_RosterViewList>
               resolveEventColor: resolveEventColor,
               userId: userId,
               userName: userName,
+              roleOrder: roleOrder,
             ),
           );
         },
@@ -446,5 +513,136 @@ class _RosterViewListState extends State<_RosterViewList>
     }
 
     return body;
+  }
+}
+
+/// 「總覽」分頁：所有聚會一起看。卡片模式一天一張卡（一個聚會一段），
+/// 表格模式一個聚會一張表疊在一起。
+class _RosterOverviewList extends StatelessWidget {
+  const _RosterOverviewList({
+    super.key,
+    required this.types,
+    required this.tableMode,
+    required this.mineOnly,
+  });
+
+  final List<ServiceType> types;
+  final bool tableMode;
+  final bool mineOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final all = context.select<RosterProvider, List<ServiceRoster>>(
+      (provider) => provider.rosters,
+    );
+    context.select<RosterProvider, int>(
+      (provider) => provider.eventOptionsRevision,
+    );
+    final provider = context.read<RosterProvider>();
+    final roleOrderByType = {
+      for (final type in types) type: provider.templates[type] ?? const <String>[],
+    };
+    final userId = context.select<SessionProvider, String?>(
+      (session) => session.currentUser?.id,
+    );
+    final userName = context.select<SessionProvider, String?>(
+      (session) => session.currentUser?.name,
+    );
+    bool mine(ServiceRoster r) =>
+        rolesForUser(r, userId: userId, userName: userName).isNotEmpty;
+
+    final typeIndex = {for (var i = 0; i < types.length; i++) types[i]: i};
+    final byDate = <DateTime, List<ServiceRoster>>{};
+    for (final r in all) {
+      if (!typeIndex.containsKey(r.type)) continue;
+      final day = DateTime(r.date.year, r.date.month, r.date.day);
+      (byDate[day] ??= []).add(r);
+    }
+    final days = byDate.keys.toList()..sort();
+    for (final list in byDate.values) {
+      list.sort((a, b) => typeIndex[a.type]!.compareTo(typeIndex[b.type]!));
+    }
+    final shownDays = mineOnly
+        ? days.where((d) => byDate[d]!.any(mine)).toList()
+        : days;
+
+    if (shownDays.isEmpty) {
+      return EmptyState(
+        icon: mineOnly
+            ? Icons.event_available_outlined
+            : Icons.event_busy_outlined,
+        message: mineOnly ? '這段期間沒有排到你的服事' : '目前沒有服事資訊',
+      );
+    }
+
+    if (tableMode) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+        children: [
+          for (final type in types) ...[
+            if (types.length > 1)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+                child: Text(
+                  type.serviceName,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            _overviewTable(
+              rosters: [
+                for (final d in shownDays)
+                  ...byDate[d]!.where(
+                    (r) => r.type == type && (!mineOnly || mine(r)),
+                  ),
+              ],
+              userId: userId,
+              userName: userName,
+              roleOrder: roleOrderByType[type]!,
+            ),
+          ],
+        ],
+      );
+    }
+
+    final resolveEventColor = provider.eventColorOf;
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 12, bottom: 20),
+      itemCount: shownDays.length,
+      itemBuilder: (context, index) {
+        final day = shownDays[index];
+        return RosterOverviewCard(
+          key: ValueKey('overview-$day'),
+          rosters: byDate[day]!,
+          resolveEventColor: resolveEventColor,
+          initiallyExpanded: index < 2,
+          userId: userId,
+          userName: userName,
+          roleOrderByType: roleOrderByType,
+        );
+      },
+    );
+  }
+
+  Widget _overviewTable({
+    required List<ServiceRoster> rosters,
+    required String? userId,
+    required String? userName,
+    required List<String> roleOrder,
+  }) {
+    final hasPeople = rosters.any((r) => r.duties.any((d) => d.people.isNotEmpty));
+    if (!hasPeople) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Text('尚未排班', style: TextStyle(color: Colors.grey[600])),
+      );
+    }
+    return RosterTableView(
+      rosters: rosters,
+      userId: userId,
+      userName: userName,
+      roleOrder: roleOrder,
+      alwaysShowRoles: roleOrder,
+      embedded: true,
+    );
   }
 }

@@ -58,7 +58,7 @@ void main() {
       RosterEntry(role: kMwSpeakerRole, people: const ['高士超']),
       RosterEntry(role: '敬拜主領', people: const ['Joe', 'Gina']),
     ]);
-    expect(rosterSummary(day), '講員 高士超　｜　敬拜 Joe、Gina');
+    expect(rosterSummary(day), '講員 高士超　｜　敬拜主領 Joe、Gina');
 
     final combined = _day('c', [
       RosterEntry(role: kTwSpeakerRole, people: const ['高士超']),
@@ -88,7 +88,7 @@ void main() {
     test('講員放第一欄，沒人排的服事不出現', () {
       final t = buildRosterTable([normal, combined]);
       expect(t.hasLanes, isTrue);
-      expect(t.columns.map((c) => c.header), ['講員', '音控', '敬拜', '奉獻']);
+      expect(t.columns.map((c) => c.header), ['講員', '音控', '敬拜主領', '奉獻點算']);
     });
 
     test('一般主日分台、華兩行；其他服事都在華行', () {
@@ -147,7 +147,7 @@ void main() {
       final t = buildRosterTable([kids]);
       expect(t.hasLanes, isFalse);
       expect(t.rows.single.lane, isNull);
-      expect(t.columns.single.header, '小組');
+      expect(t.columns.single.header, '小組老師');
     });
   });
 
@@ -155,11 +155,16 @@ void main() {
     test('同一天排到兩項的人標出來；佔位字與同項重複不算', () {
       final day = _day('d', [
         RosterEntry(role: '報告', people: const ['Joe']),
-        RosterEntry(role: '奉獻點算', people: const ['Joe', 'Joe']),
+        RosterEntry(role: '敬拜讚美', people: const ['Joe', 'Joe']),
         RosterEntry(role: '音控', people: const ['台語']),
         RosterEntry(role: '敬拜主領', people: const ['台語']),
       ]);
       expect(doubleBookedPeople(day), {'Joe'});
+      final sameSpeaker = _day('s', [
+        RosterEntry(role: kTwSpeakerRole, people: const ['高士超']),
+        RosterEntry(role: kMwSpeakerRole, people: const ['高士超']),
+      ]);
+      expect(doubleBookedPeople(sameSpeaker), isEmpty, reason: '台華同一位講員');
       final t = buildRosterTable([day]);
       final joe = t.rows.single.cells.expand((c) => c).where((c) => c.text == 'Joe');
       expect(joe.every((c) => c.isConflict), isTrue);
@@ -175,7 +180,7 @@ void main() {
         alwaysShowRoles: const [kTwSpeakerRole, '敬拜主領', '音控', '愛餐整潔'],
         editing: true,
       );
-      expect(t.columns.map((c) => c.header), ['講員', '敬拜', '音控', '愛餐']);
+      expect(t.columns.map((c) => c.header), ['講員', '敬拜主領', '音控', '愛餐整潔']);
     });
 
     test('編輯時佔位字跟人名一起放在華行', () {
@@ -221,5 +226,66 @@ void main() {
         ['Crispin:2', 'Hugo:2'],
       );
     });
+  });
+
+  group('照服事項目設定排序', () {
+    final day = _day('d', [
+      RosterEntry(role: '音控', people: const ['Hugo']),
+      RosterEntry(role: '收奉', people: const ['Kevin']),
+      RosterEntry(role: kMwSpeakerRole, people: const ['林國泰']),
+      RosterEntry(role: '司會報告', people: const ['CT']),
+      RosterEntry(role: '敬拜主領', people: const ['Joe']),
+      RosterEntry(role: '小組', people: const ['Ann']),
+    ]);
+    const order = [
+      kTwSpeakerRole,
+      kMwSpeakerRole,
+      '司會報告',
+      '敬拜主領',
+      '音控',
+      '收奉',
+      '聖餐',
+    ];
+
+    test('表格欄位', () {
+      final t = buildRosterTable([day], roleOrder: order);
+      expect(
+        t.columns.map((c) => c.header),
+        ['講員', '司會報告', '敬拜主領', '音控', '收奉', '小組'],
+      );
+    });
+
+    test('卡片：不在設定裡的放最後', () {
+      expect(
+        dutiesInOrder(day.duties, order).map((d) => d.role),
+        [kMwSpeakerRole, '司會報告', '敬拜主領', '音控', '收奉', '小組'],
+      );
+      expect(dutiesInOrder(day.duties, const []), same(day.duties));
+    });
+  });
+
+  test('服事表只寫名字也認得：Austin 對 Austin Lin', () {
+    expect(rosterNameMatchesUser('Austin', 'Austin Lin'), isTrue);
+    expect(rosterNameMatchesUser('austin lin', 'Austin Lin'), isTrue);
+    expect(rosterNameMatchesUser('Lin', 'Austin Lin'), isFalse);
+    expect(rosterNameMatchesUser('Austin Wang', 'Austin Lin'), isFalse);
+    expect(rosterNameMatchesUser('林', '林國泰'), isFalse);
+  });
+
+  test('同一天可以同時做的：奉獻點算跟誰都可以、聖餐長老與司會報告可以', () {
+    final day = _day('r', [
+      RosterEntry(role: '司會報告', people: const ['CT']),
+      RosterEntry(role: '聖餐長老', people: const ['CT', 'Joe']),
+      RosterEntry(role: '奉獻點算', people: const ['Joe', 'Kevin']),
+      RosterEntry(role: '音控', people: const ['Kevin']),
+    ]);
+    expect(doubleBookedPeople(day), isEmpty);
+    final bad = _day('b', [
+      RosterEntry(role: '音控', people: const ['CT']),
+      RosterEntry(role: '敬拜讚美', people: const ['CT']),
+    ]);
+    expect(doubleBookedPeople(bad), {'CT'});
+    expect(rolesCanShare('收奉', '音控'), isTrue, reason: '舊名字也照規則');
+    expect(rolesCanShare('兒童主日', '音控'), isFalse);
   });
 }
