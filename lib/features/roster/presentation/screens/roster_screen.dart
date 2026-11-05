@@ -9,6 +9,7 @@ import '../providers/roster_provider.dart';
 import '../widgets/roster_view_card.dart';
 import '../widgets/roster_table_view.dart';
 import '../widgets/roster_view_colors.dart';
+import '../widgets/roster_toolbar.dart';
 import '../../domain/roster_view_model.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/widgets/empty_state.dart';
@@ -162,76 +163,63 @@ class _RosterScreenState extends State<RosterScreen>
       );
     }
 
+    final tools = <Widget>[
+      FilterChip(
+        label: const Text('只看我的'),
+        tooltip: _mineOnly ? '顯示全部服事' : '只看排到我的日子',
+        selected: _mineOnly,
+        onSelected: (_) => setState(() => _mineOnly = !_mineOnly),
+        showCheckmark: false,
+        avatar: Icon(
+          _mineOnly ? Icons.person : Icons.person_outline,
+          size: 18,
+          color: _mineOnly ? kRosterMeText : null,
+        ),
+        selectedColor: kRosterMeFill,
+        side: BorderSide(
+          color: _mineOnly ? kRosterMeBorder : Colors.grey[400]!,
+        ),
+        labelStyle: TextStyle(
+          color: _mineOnly ? kRosterMeText : null,
+          fontWeight: _mineOnly ? FontWeight.bold : null,
+        ),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      RosterViewModeSwitch(
+        tableMode: _tableMode,
+        onChanged: (value) => setState(() => _tableMode = value),
+      ),
+      if (canEdit)
+        RosterToolButton(
+          icon: Icons.edit_outlined,
+          label: '編輯',
+          tooltip: '切換至編輯模式',
+          onPressed: () =>
+              _loadEditLibrary(context, roster_edit_screen.loadLibrary),
+        ),
+    ];
+
     final appBar = AppBar(
       title: Text(titleText),
       centerTitle: true,
-      actions: [
-        // 放在標題列而不是清單上方：清單上多一列會讓檢視／編輯模式切換時
-        // 同一天的位置差一截（見 roster_scroll_anchor_test）。
-        Padding(
-          padding: const EdgeInsets.only(right: 6),
-          child: FilterChip(
-            label: const Text('只看我的'),
-            tooltip: _mineOnly ? '顯示全部服事' : '只看我的服事',
-            selected: _mineOnly,
-            onSelected: (_) => setState(() => _mineOnly = !_mineOnly),
-            showCheckmark: false,
-            avatar: Icon(
-              _mineOnly ? Icons.person : Icons.person_outline,
-              size: 18,
-              color: _mineOnly ? kRosterMeText : null,
-            ),
-            selectedColor: kRosterMeFill,
-            side: BorderSide(
-              color: _mineOnly ? kRosterMeBorder : Colors.grey[400]!,
-            ),
-            labelStyle: TextStyle(
-              color: _mineOnly ? kRosterMeText : null,
-              fontWeight: _mineOnly ? FontWeight.bold : null,
-            ),
-            visualDensity: VisualDensity.compact,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ),
-        // 有字的切換鈕：只有圖示的話，同工不知道可以切成表格。
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('卡片')),
-              ButtonSegment(value: true, label: Text('表格')),
-            ],
-            selected: {_tableMode},
-            showSelectedIcon: false,
-            onSelectionChanged: (selection) =>
-                setState(() => _tableMode = selection.first),
-            style: const ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: WidgetStatePropertyAll(
-                EdgeInsets.symmetric(horizontal: 10),
+      bottom: rosterAppBarBottom(
+        tools: tools,
+        tabs: allowedTypes.isEmpty
+            ? null
+            : TabBar(
+                isScrollable: allowedTypes.length > 3,
+                controller: _tabController,
+                tabs: allowedTypes
+                    .map((type) => Tab(text: type.label))
+                    .toList(),
+                indicatorSize: TabBarIndicatorSize.label,
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: const WidgetStatePropertyAll(
+                  Colors.transparent,
+                ),
               ),
-            ),
-          ),
-        ),
-        if (canEdit)
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: '切換至編輯模式',
-            onPressed: () =>
-                _loadEditLibrary(context, roster_edit_screen.loadLibrary),
-          ),
-      ],
-      bottom: allowedTypes.isEmpty
-          ? null
-          : TabBar(
-              isScrollable: allowedTypes.length > 3,
-              controller: _tabController,
-              tabs: allowedTypes.map((type) => Tab(text: type.label)).toList(),
-              indicatorSize: TabBarIndicatorSize.label,
-              splashFactory: NoSplash.splashFactory,
-              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-            ),
+      ),
     );
 
     if (allowedTypes.isEmpty) {
@@ -378,7 +366,7 @@ class _RosterViewListState extends State<_RosterViewList>
         icon: Icons.event_busy_outlined,
         message: '此類別目前沒有服事資訊',
         hint: canEdit
-            ? '按右上角的鉛筆開始編輯：先按右上角中間的清單圖示「服事項目設定」新增服事項目，再到各日期按「新增服事項目」排班。'
+            ? '按上方的「編輯」開始：先按「服事項目」新增服事項目，再到各日期按「新增服事項目」排班，或用「排班模式」一次排整季、整年。'
             : '管理員建立後會在這裡顯示',
       );
     }
@@ -413,7 +401,7 @@ class _RosterViewListState extends State<_RosterViewList>
       body = const EmptyState(
         icon: Icons.event_available_outlined,
         message: '這段期間沒有排到你的服事',
-        hint: '再按一次右上角的「只看我的」，可以回到完整的服事表',
+        hint: '再按一次上方的「只看我的」，可以回到完整的服事表',
       );
     } else if (widget.tableMode) {
       body = RosterTableView(

@@ -12,6 +12,7 @@ import '../../data/roster_photo.dart';
 import '../../data/roster_photo_picker.dart';
 import '../providers/roster_provider.dart';
 import '../widgets/roster_card.dart';
+import '../widgets/roster_toolbar.dart';
 import '../widgets/photo_import_progress.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/widgets/empty_state.dart';
@@ -129,74 +130,71 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
     final isAdmin = context.select<SessionProvider, bool>((s) => s.isAdmin);
     const titleText = '編輯服事表';
 
+    final tools = <Widget>[
+      if (widget.onTableModeChanged != null)
+        RosterViewModeSwitch(
+          tableMode: widget.tableMode,
+          onChanged: widget.onTableModeChanged!,
+        ),
+      RosterToolButton(
+        icon: Icons.calendar_month_outlined,
+        label: '排班模式',
+        tooltip: '一次排整季、整年（例如下一年度）',
+        onPressed: () => _openArranger(context, allowedTypes),
+      ),
+      // settings 的寫入權在 firestore.rules 裡是 admin only，所以非 admin 看到
+      // 這兩顆按鈕只會按下去然後失敗 —— 不如不要顯示。
+      if (isAdmin) ...[
+        RosterToolButton(
+          icon: Icons.palette_outlined,
+          label: '事件選項',
+          tooltip: '事件選項設定（聖餐、聯合崇拜等標籤與顏色）',
+          onPressed: () => _loadAndPush(
+            context,
+            event_settings_screen.loadLibrary,
+            () => event_settings_screen.EventSettingsScreen(),
+          ),
+        ),
+        RosterToolButton(
+          icon: Icons.list_alt_outlined,
+          label: '服事項目',
+          tooltip: '服事項目設定（每週要排哪些服事、順序）',
+          onPressed: () => _loadAndPush(
+            context,
+            role_settings_screen.loadLibrary,
+            () => role_settings_screen.RoleSettingsScreen(),
+          ),
+        ),
+      ],
+    ];
+
     final appBar = AppBar(
       title: Text(titleText),
       centerTitle: true,
       actions: [
-        if (widget.onTableModeChanged != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('卡片')),
-                ButtonSegment(value: true, label: Text('表格')),
-              ],
-              selected: {widget.tableMode},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) =>
-                  widget.onTableModeChanged!(selection.first),
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                padding: WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 10),
-                ),
-              ),
-            ),
-          ),
-        IconButton(
-          icon: const Icon(Icons.calendar_month_outlined),
-          tooltip: '排班模式（一次排整季、整年）',
-          onPressed: () => _openArranger(context, allowedTypes),
-        ),
-        if (isAdmin) ...[
-          IconButton(
-            icon: const Icon(Icons.palette_outlined),
-            tooltip: '事件選項設定',
-            onPressed: () => _loadAndPush(
-              context,
-              event_settings_screen.loadLibrary,
-              () => event_settings_screen.EventSettingsScreen(),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.list_alt_outlined),
-            tooltip: '服事項目設定',
-            onPressed: () => _loadAndPush(
-              context,
-              role_settings_screen.loadLibrary,
-              () => role_settings_screen.RoleSettingsScreen(),
-            ),
-          ),
-        ],
-        // 以前是 view_list 圖示，跟旁邊「服事項目設定」的清單圖示幾乎一樣，
-        // 照著「按清單圖示」的說明就會按到這顆、直接離開編輯模式。
         Tooltip(
           message: '切換至檢視模式',
           child: TextButton(onPressed: widget.onExit, child: const Text('完成')),
         ),
       ],
-      bottom: allowedTypes.isEmpty
-          ? null
-          : TabBar(
-              controller: widget.tabController,
-              isScrollable: allowedTypes.length > 3,
-              tabs: allowedTypes.map((type) => Tab(text: type.label)).toList(),
-              indicatorSize: TabBarIndicatorSize.label,
-              // 讓切換時的動畫更平滑
-              splashFactory: NoSplash.splashFactory,
-              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-            ),
+      bottom: rosterAppBarBottom(
+        tools: tools,
+        tabs: allowedTypes.isEmpty
+            ? null
+            : TabBar(
+                controller: widget.tabController,
+                isScrollable: allowedTypes.length > 3,
+                tabs: allowedTypes
+                    .map((type) => Tab(text: type.label))
+                    .toList(),
+                indicatorSize: TabBarIndicatorSize.label,
+                // 讓切換時的動畫更平滑
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: const WidgetStatePropertyAll(
+                  Colors.transparent,
+                ),
+              ),
+      ),
     );
 
     if (allowedTypes.isEmpty) {
