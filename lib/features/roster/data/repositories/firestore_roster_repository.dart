@@ -238,13 +238,13 @@ class FirestoreRosterRepository implements RosterRepository {
   ) {
     if (docs.isEmpty) return const [];
     final today = ChurchTime.dateOnly(now);
-    final endDate = rosterQuarterEnd(now);
+    final all = docs.map((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return rosterFromFirestore(data, doc.id);
+    }).toList();
+    final endDate = rosterViewEnd(now, all);
 
-    final rosters = docs
-        .map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          return rosterFromFirestore(data, doc.id);
-        })
+    final rosters = all
         .where((r) => !r.date.isBefore(today) && !r.date.isAfter(endDate))
         .toList();
 

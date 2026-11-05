@@ -245,4 +245,25 @@ void main() {
     expect(again, hasLength(42));
     expect(again.first.date, DateTime.utc(2027, 3, 14));
   });
+
+  test('排好明年的話，服事表看到最後一個排了人的週次；空白週次不算', () {
+    ServiceRoster week(DateTime d, String person) => ServiceRoster(
+      id: '${d.toIso8601String()}_s',
+      date: d,
+      type: ServiceType.sundayService,
+      serviceName: '主日崇拜',
+      duties: [
+        RosterEntry(role: '音控', people: [person]),
+      ],
+    );
+    final now = DateTime.utc(2026, 11, 5);
+    expect(rosterViewEnd(now, const []), DateTime.utc(2026, 12, 31));
+    expect(
+      rosterViewEnd(now, [
+        week(DateTime.utc(2027, 6, 6), 'Hugo'),
+        week(DateTime.utc(2027, 12, 26), '待定'),
+      ]),
+      DateTime.utc(2027, 6, 6),
+    );
+  });
 }

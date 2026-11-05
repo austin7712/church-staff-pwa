@@ -807,10 +807,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ..sort((a, b) => a.date.compareTo(b.date));
 
     for (final roster in sorted) {
-      if (roster.date.isBefore(window.start) ||
-          roster.date.isAfter(window.end)) {
-        continue;
-      }
+      // 不設結束日：服事表讀進來的就是看得到的範圍（排班模式排好明年的話，
+      // 排完首頁就看得到）。
+      if (roster.date.isBefore(window.start)) continue;
       final roles = roster.duties
           .where((duty) => _isAssignedTo(duty, normalizedId, normalizedName))
           .map((duty) => duty.role)
