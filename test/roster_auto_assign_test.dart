@@ -282,7 +282,7 @@ void main() {
     });
 
     test('已經填好某組的月份照填的，後面接著輪', () {
-      final targets = weeks(9);
+      final targets = weeks(10);
       targets[0] = love(targets[0].date, ['溫柔小組']);
       final result = autoAssign(
         targets: targets,
