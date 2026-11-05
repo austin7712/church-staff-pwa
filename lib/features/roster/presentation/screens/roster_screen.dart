@@ -18,9 +18,16 @@ import '../../../../core/utils/snappy_page_scroll_physics.dart';
 import 'roster_edit_screen.dart' deferred as roster_edit_screen;
 
 class RosterScreen extends StatefulWidget {
-  const RosterScreen({super.key, this.allowEdit = true});
+  const RosterScreen({
+    super.key,
+    this.allowEdit = true,
+    this.initialTableMode = true,
+  });
 
   final bool allowEdit;
+
+  /// 一開始用表格還是卡片。預設表格（一眼看完整季）。
+  final bool initialTableMode;
 
   @override
   State<RosterScreen> createState() => _RosterScreenState();
@@ -32,8 +39,8 @@ class _RosterScreenState extends State<RosterScreen>
   bool _isLoadingEdit = false;
   TabController? _tabController;
 
-  /// 檢視方式：卡片（預設）或像紙本一樣的表格。各分頁共用同一個選擇。
-  bool _tableMode = false;
+  /// 檢視方式：表格（預設）或卡片。各分頁共用同一個選擇。
+  late bool _tableMode = widget.initialTableMode;
 
   /// 只列出排到自己的那幾天。
   bool _mineOnly = false;
@@ -141,8 +148,31 @@ class _RosterScreenState extends State<RosterScreen>
     // 「能不能改」，牧區決定「能改哪一本」。
     final canEditRoster = session.canEditRoster;
     final canEdit = canEditRoster && widget.allowEdit;
-    final allowedTypes =
+    final userTypes =
         session.currentUser?.allowedRosterTypes ?? const <ServiceType>[];
+    // 沒有任何服事項目、也沒有排過人的聚會不列出來（例如兒童主日、愛餐整理
+    // 已經併進主日的服事項目裡，原本的分頁只剩空白週次）。
+    // 回傳字串（不是 Set）：select 用 == 比較，才不會每次通知都重建。
+    final hiddenKey = context.select<RosterProvider, String>((p) {
+      final templates = p.templates;
+      if (!templates.values.any((roles) => roles.isNotEmpty)) return '';
+      return [
+        for (final type in userTypes)
+          if ((templates[type] ?? const <String>[]).isEmpty &&
+              !p
+                  .getRostersByType(type)
+                  .any((r) => r.duties.any((d) => d.people.isNotEmpty)))
+            type.name,
+      ].join('\n');
+    });
+    final hidden = hiddenKey.isEmpty
+        ? const <String>{}
+        : hiddenKey.split('\n').toSet();
+    final visibleTypes = [
+      for (final type in userTypes)
+        if (!hidden.contains(type.name)) type,
+    ];
+    final allowedTypes = visibleTypes.isEmpty ? userTypes : visibleTypes;
     // 標題不分本季／下季：對同工來說那只是「服事表」，範圍怎麼算他不用管。
     const titleText = '服事表';
     // select 而非 watch：否則每次 fetch 的 loading 開關都會重建整個 Scaffold

@@ -78,7 +78,7 @@ Future<RosterProvider> _pumpRosterScreen(WidgetTester tester) async {
         ChangeNotifierProvider<RosterProvider>.value(value: rosters),
         ChangeNotifierProvider<UserAdminProvider>.value(value: users),
       ],
-      child: const MaterialApp(home: RosterScreen()),
+      child: const MaterialApp(home: RosterScreen(initialTableMode: false)),
     ),
   );
   await tester.pumpAndSettle();

@@ -140,7 +140,7 @@ Future<List<String>> _pumpRosterTabs(
         ChangeNotifierProvider<SessionProvider>.value(value: session),
         ChangeNotifierProvider<RosterProvider>.value(value: rosters),
       ],
-      child: const MaterialApp(home: RosterScreen()),
+      child: const MaterialApp(home: RosterScreen(initialTableMode: false)),
     ),
   );
   await tester.pumpAndSettle();
