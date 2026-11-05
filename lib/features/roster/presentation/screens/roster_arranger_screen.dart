@@ -160,68 +160,83 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
     if (mounted) await _load();
   }
 
+  /// 一鍵安排與同工名單都需要的資料：歷史（這段期間之前一年）、每人次數、
+  /// 要排的服事項目、同工名單（沒整理過的項目用今年做過的人當預設）。
+  Future<
+    ({
+      List<ServiceRoster> history,
+      Map<String, Map<String, int>> counts,
+      List<String> roles,
+      StaffPool pool,
+    })
+  >
+  _loadPool(RosterProvider provider, List<ServiceRoster> rosters) async {
+    final (from, _) = _period.range(_year);
+    final history = (await provider.loadRostersInRange(
+      from.subtract(const Duration(days: 365)),
+      from.subtract(const Duration(days: 1)),
+    )).where((r) => r.type == _type).toList();
+    final counts = roleHistoryCounts([...history, ...rosters]);
+    final roles = [
+      for (final role in provider.templates[_type] ?? const <String>[])
+        if (role != kTwSpeakerRole && role != kMwSpeakerRole) role,
+    ];
+    final saved = await provider.loadStaffPool(_type);
+    return (
+      history: history,
+      counts: counts,
+      roles: roles,
+      pool: saved.withDefaults(counts, roles),
+    );
+  }
+
+  Future<void> _editPool() async {
+    final rosters = _rosters;
+    if (rosters == null || _assigning) return;
+    final provider = context.read<RosterProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _assigning = true);
+    try {
+      final data = await _loadPool(provider, rosters);
+      if (!mounted) return;
+      final edited = await showDialog<StaffPool>(
+        context: context,
+        builder: (_) => _PoolEditorDialog(
+          serviceName: _type.serviceName,
+          roles: data.roles,
+          counts: data.counts,
+          pool: data.pool,
+        ),
+      );
+      if (edited == null) return;
+      await provider.saveStaffPool(_type, edited);
+      messenger.showSnackBar(const SnackBar(content: Text('同工名單已儲存')));
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('儲存失敗：${mapErrorToUserMessage(e)}')),
+      );
+    } finally {
+      if (mounted) setState(() => _assigning = false);
+    }
+  }
+
   Future<void> _autoAssign() async {
     final rosters = _rosters;
     if (rosters == null || _assigning) return;
     final provider = context.read<RosterProvider>();
     final messenger = ScaffoldMessenger.of(context);
-    final (from, _) = _period.range(_year);
     setState(() => _assigning = true);
     try {
-      // 歷史：這段期間之前的一年，同一個聚會。
-      final history = (await provider.loadRostersInRange(
-        from.subtract(const Duration(days: 365)),
-        from.subtract(const Duration(days: 1)),
-      )).where((r) => r.type == _type).toList();
+      final data = await _loadPool(provider, rosters);
       if (!mounted) return;
-
-      final counts = roleHistoryCounts([...history, ...rosters]);
-      final roles = [
-        for (final role in provider.templates[_type] ?? const <String>[])
-          if (role != kTwSpeakerRole &&
-              role != kMwSpeakerRole &&
-              (counts[role]?.isNotEmpty ?? false))
-            role,
-      ];
-      if (roles.isEmpty) {
+      final history = data.history;
+      final eligible = data.pool.eligible;
+      if (eligible.values.every((people) => people.isEmpty)) {
         messenger.showSnackBar(
-          const SnackBar(content: Text('沒有歷史資料可以參考，無法一鍵安排')),
+          const SnackBar(content: Text('同工名單是空的：先按「同工名單」填好每一項可以排的人')),
         );
         return;
       }
-
-      final defaults = defaultEligible(counts);
-      final saved = await provider.loadAutoAssignPicks(_type);
-      if (!mounted) return;
-      // 之前勾過的人（例如做得少但要排的同工）會自動帶進來。
-      final initial = saved.applyTo(defaults);
-      // 記住的人裡，今年完全沒做過的也要列出來，才看得到、取消得了。
-      for (final MapEntry(key: role, value: people) in saved.include.entries) {
-        if (!roles.contains(role)) continue;
-        final byPerson = counts.putIfAbsent(role, () => {});
-        for (final p in people) {
-          byPerson.putIfAbsent(p, () => 0);
-        }
-      }
-
-      final eligible = await showDialog<Map<String, Set<String>>>(
-        context: context,
-        builder: (_) => _EligibilityDialog(
-          roles: roles,
-          counts: counts,
-          initial: initial,
-        ),
-      );
-      if (eligible == null || !mounted) return;
-      // 記住這次的選擇，下次（換電腦也一樣）自動帶入。
-      await provider.saveAutoAssignPicks(
-        _type,
-        AutoAssignPicks.diff(
-          defaults: defaults,
-          selected: eligible,
-        ).mergedOver(saved, roles.toSet()),
-      );
-      if (!mounted) return;
 
       final result = autoAssign(
         targets: rosters,
@@ -377,9 +392,15 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      '一鍵安排：依今年的歷史，把空格公平地填上做過這項服事的人（講員不排）。先預覽，確認後才寫入。',
+                      '先整理「同工名單」（每一項可以排誰），再按「一鍵安排」把空格公平地填上（講員不排）。會先預覽，確認後才寫入。',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _assigning ? null : _editPool,
+                    icon: const Icon(Icons.groups_outlined),
+                    label: const Text('同工名單'),
                   ),
                   const SizedBox(width: 8),
                   FilledButton.tonalIcon(
@@ -444,63 +465,108 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
   }
 }
 
-/// 一鍵安排第一步：每一項服事可以排哪些人。預設勾選做過 2 次以上的人；
-/// 安排者可以再勾（例如請產假剛回來、今年做得少的同工）或取消。
-class _EligibilityDialog extends StatefulWidget {
-  const _EligibilityDialog({
+/// 「同工名單」：每一項服事可以排哪些人。一開始是今年做過的人；安排者可以
+/// 加新同工、拿掉不再服事的人。一鍵安排只從這份名單挑。
+class _PoolEditorDialog extends StatefulWidget {
+  const _PoolEditorDialog({
+    required this.serviceName,
     required this.roles,
     required this.counts,
-    required this.initial,
+    required this.pool,
   });
 
+  final String serviceName;
   final List<String> roles;
   final Map<String, Map<String, int>> counts;
-  final Map<String, Set<String>> initial;
+  final StaffPool pool;
 
   @override
-  State<_EligibilityDialog> createState() => _EligibilityDialogState();
+  State<_PoolEditorDialog> createState() => _PoolEditorDialogState();
 }
 
-class _EligibilityDialogState extends State<_EligibilityDialog> {
-  late final Map<String, Set<String>> _selected = {
+class _PoolEditorDialogState extends State<_PoolEditorDialog> {
+  late final Map<String, List<String>> _pool = {
     for (final role in widget.roles)
-      role: {...?widget.initial[role]},
+      role: [...?widget.pool.roles[role]],
   };
+  late final Map<String, TextEditingController> _inputs = {
+    for (final role in widget.roles) role: TextEditingController(),
+  };
+
+  @override
+  void dispose() {
+    for (final c in _inputs.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _add(String role) {
+    final name = _inputs[role]!.text.trim();
+    if (name.isEmpty) return;
+    setState(() {
+      if (!_pool[role]!.contains(name)) _pool[role]!.add(name);
+      _inputs[role]!.clear();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('誰可以排？'),
+      title: Text('同工名單：${widget.serviceName}'),
       content: SizedBox(
-        width: 560,
+        width: 620,
         child: ListView(
           shrinkWrap: true,
           children: [
             const Text(
-              '每一項只會從勾選的人裡挑。預設勾選今年做過 2 次以上的人，加上之前特別勾過的人；數字是今年做過幾次。你的選擇會被記住，下次自動帶入。',
+              '一鍵安排只會從這裡的名單挑人，不會跨到別的服事。可以加新同工、按 ✕ 拿掉不再服事的人。'
+              '括號裡是今年做過幾次。名字要跟服事表上的寫法一樣。',
               style: TextStyle(fontSize: 13),
             ),
             for (final role in widget.roles) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               Text(role, style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  for (final entry in (widget.counts[role]!.entries.toList()
-                    ..sort((a, b) => b.value.compareTo(a.value))))
-                    FilterChip(
-                      label: Text('${entry.key} ${entry.value}'),
-                      selected: _selected[role]!.contains(entry.key),
-                      onSelected: (on) => setState(() {
-                        if (on) {
-                          _selected[role]!.add(entry.key);
-                        } else {
-                          _selected[role]!.remove(entry.key);
-                        }
-                      }),
+                  for (final name in _pool[role]!)
+                    InputChip(
+                      label: Text(
+                        '$name（${widget.counts[role]?[name] ?? 0}）',
+                      ),
+                      onDeleted: () =>
+                          setState(() => _pool[role]!.remove(name)),
+                      deleteButtonTooltipMessage: '從名單拿掉',
                     ),
+                  if (_pool[role]!.isEmpty)
+                    Text(
+                      '還沒有人',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _inputs[role],
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        hintText: '新增同工（輸入名字後按 Enter）',
+                      ),
+                      onSubmitted: (_) => _add(role),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '新增',
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    onPressed: () => _add(role),
+                  ),
                 ],
               ),
             ],
@@ -513,8 +579,8 @@ class _EligibilityDialogState extends State<_EligibilityDialog> {
           child: const Text('取消'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, _selected),
-          child: const Text('下一步：預覽'),
+          onPressed: () => Navigator.pop(context, StaffPool(_pool)),
+          child: const Text('儲存名單'),
         ),
       ],
     );

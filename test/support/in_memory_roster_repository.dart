@@ -137,18 +137,15 @@ class InMemoryRosterRepository implements RosterRepository {
     return missing.length;
   }
 
-  final Map<ServiceType, AutoAssignPicks> autoAssignPicks = {};
+  final Map<ServiceType, StaffPool> staffPools = {};
 
   @override
-  Future<AutoAssignPicks> getAutoAssignPicks(ServiceType type) async =>
-      autoAssignPicks[type] ?? const AutoAssignPicks();
+  Future<StaffPool> getStaffPool(ServiceType type) async =>
+      staffPools[type] ?? const StaffPool();
 
   @override
-  Future<void> saveAutoAssignPicks(
-    ServiceType type,
-    AutoAssignPicks picks,
-  ) async {
-    autoAssignPicks[type] = picks;
+  Future<void> saveStaffPool(ServiceType type, StaffPool pool) async {
+    staffPools[type] = pool;
   }
 
   @override

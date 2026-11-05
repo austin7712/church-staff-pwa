@@ -120,19 +120,16 @@ class FirestoreRosterRepository implements RosterRepository {
       _firestore.collection('settings').doc('auto_assign');
 
   @override
-  Future<AutoAssignPicks> getAutoAssignPicks(ServiceType type) async {
+  Future<StaffPool> getStaffPool(ServiceType type) async {
     final snapshot = await _autoAssignDoc.get();
     final data = snapshot.data() as Map<String, dynamic>?;
-    return AutoAssignPicks.fromJson(data?[type.name]);
+    return StaffPool.fromJson(data?[type.name]);
   }
 
   @override
-  Future<void> saveAutoAssignPicks(
-    ServiceType type,
-    AutoAssignPicks picks,
-  ) async {
+  Future<void> saveStaffPool(ServiceType type, StaffPool pool) async {
     await _autoAssignDoc.set({
-      type.name: picks.toJson(),
+      type.name: pool.toJson(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }

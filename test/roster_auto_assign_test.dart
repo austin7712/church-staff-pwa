@@ -217,63 +217,28 @@ void main() {
     }
   });
 
-  group('記住的人選', () {
-    final defaults = {
-      '音控': {'A', 'B', 'Henry'},
-      '收奉': {'O1'},
-    };
-
-    test('額外加入與排除疊在預設上', () {
-      const picks = AutoAssignPicks(
-        include: {
-          '音控': {'Austin'},
-        },
-        exclude: {
-          '音控': {'B'},
-        },
-      );
-      expect(picks.applyTo(defaults), {
-        '音控': {'A', 'Henry', 'Austin'},
-        '收奉': {'O1'},
+  group('同工名單', () {
+    test('還沒整理過的項目用今年做過的人當預設，做得多的在前', () {
+      final counts = {
+        '音控': {'A': 1, 'B': 5, 'Austin': 1},
+        '收奉': {'O1': 2},
+      };
+      const saved = StaffPool({
+        '收奉': ['O1', '新同工'],
       });
+      final pool = saved.withDefaults(counts, ['音控', '收奉', '聖餐']);
+      expect(pool.roles['音控'], ['B', 'A', 'Austin']);
+      expect(pool.roles['收奉'], ['O1', '新同工'], reason: '整理過的照存的');
+      expect(pool.roles['聖餐'], isEmpty);
+      expect(pool.eligible['音控'], {'A', 'B', 'Austin'});
     });
 
-    test('從這次勾的結果算出要記住的調整，存檔讀回一樣', () {
-      final picks = AutoAssignPicks.diff(
-        defaults: defaults,
-        selected: {
-          '音控': {'A', 'B', 'Henry', 'Austin'},
-          '收奉': <String>{},
-        },
-      );
-      expect(picks.include, {
-        '音控': {'Austin'},
+    test('存檔讀回一樣', () {
+      const pool = StaffPool({
+        '音控': ['Austin', 'Henry'],
       });
-      expect(picks.exclude, {
-        '收奉': {'O1'},
-      });
-      final back = AutoAssignPicks.fromJson(picks.toJson());
-      expect(back.include, picks.include);
-      expect(back.exclude, picks.exclude);
-    });
-
-    test('這次沒列出的服事項目，舊的記錄保留', () {
-      const previous = AutoAssignPicks(
-        include: {
-          '聖餐': {'Z'},
-        },
-      );
-      final now = AutoAssignPicks.diff(
-        defaults: defaults,
-        selected: {
-          '音控': {'A', 'B', 'Henry', 'Austin'},
-          '收奉': {'O1'},
-        },
-      ).mergedOver(previous, {'音控', '收奉'});
-      expect(now.include, {
-        '聖餐': {'Z'},
-        '音控': {'Austin'},
-      });
+      expect(StaffPool.fromJson(pool.toJson()).roles, pool.roles);
+      expect(StaffPool.fromJson(null).roles, isEmpty);
     });
   });
 }

@@ -29,12 +29,12 @@ abstract class RosterRepository {
     DateTime to,
   );
 
-  /// 一鍵安排記住的人選：每個聚會、每項服事「額外加入」與「排除」的人，
-  /// 疊在「做過 2 次以上」的預設名單上。存在 settings/auto_assign。
-  Future<AutoAssignPicks> getAutoAssignPicks(ServiceType type);
+  /// 一鍵安排用的「同工名單」（每個聚會、每項服事可以排誰）。
+  /// 存在 settings/auto_assign；還沒存過就是空的。
+  Future<StaffPool> getStaffPool(ServiceType type);
 
   /// 只有管理員寫得進去（settings 的規則）；其他人寫不進去時往上丟。
-  Future<void> saveAutoAssignPicks(ServiceType type, AutoAssignPicks picks);
+  Future<void> saveStaffPool(ServiceType type, StaffPool pool);
 
   Future<void> updateRoster(ServiceRoster roster);
 
