@@ -31,11 +31,17 @@ class RosterEditScreen extends StatefulWidget {
   final TabController? tabController;
   final List<ServiceType> allowedTypes;
 
+  /// 卡片或表格。跟檢視模式共用同一個選擇，切換模式時不會跳回卡片。
+  final bool tableMode;
+  final ValueChanged<bool>? onTableModeChanged;
+
   const RosterEditScreen({
     super.key,
     required this.onExit,
     required this.tabController,
     required this.allowedTypes,
+    this.tableMode = false,
+    this.onTableModeChanged,
   });
 
   @override
@@ -117,6 +123,27 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
       title: Text(titleText),
       centerTitle: true,
       actions: [
+        if (widget.onTableModeChanged != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('卡片')),
+                ButtonSegment(value: true, label: Text('表格')),
+              ],
+              selected: {widget.tableMode},
+              showSelectedIcon: false,
+              onSelectionChanged: (selection) =>
+                  widget.onTableModeChanged!(selection.first),
+              style: const ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 10),
+                ),
+              ),
+            ),
+          ),
         if (isAdmin) ...[
           IconButton(
             icon: const Icon(Icons.palette_outlined),
@@ -222,6 +249,7 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
               return _RosterList(
                 key: PageStorageKey(type.toString()),
                 type: type,
+                tableMode: widget.tableMode,
               );
             }).toList(),
           );
@@ -233,8 +261,13 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
 
 class _RosterList extends StatefulWidget {
   final ServiceType type;
+  final bool tableMode;
 
-  const _RosterList({super.key, required this.type});
+  const _RosterList({
+    super.key,
+    required this.type,
+    this.tableMode = false,
+  });
 
   @override
   State<_RosterList> createState() => _RosterListState();
@@ -297,6 +330,10 @@ class _RosterListState extends State<_RosterList>
               )
             : null,
       );
+    }
+
+    if (widget.tableMode) {
+      return RosterEditTable(type: widget.type, rosters: rosters);
     }
 
     final showImport = isEditMode;

@@ -157,6 +157,8 @@ class _RosterScreenState extends State<RosterScreen>
         onExit: _exitEditMode,
         tabController: _tabController,
         allowedTypes: allowedTypes,
+        tableMode: _tableMode,
+        onTableModeChanged: (value) => setState(() => _tableMode = value),
       );
     }
 

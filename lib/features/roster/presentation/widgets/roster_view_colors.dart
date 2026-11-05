@@ -18,3 +18,6 @@ const Color kRosterPlaceholderText = Color(0xFF5B6573);
 /// 「台」「華」兩行的標籤色。
 const Color kRosterLaneTw = Color(0xFF8A4B12);
 const Color kRosterLaneMw = Color(0xFF2F5D8A);
+
+/// 同一天重複排到（只有編輯表格會標）。
+const Color kRosterConflict = Color(0xFFC62828);

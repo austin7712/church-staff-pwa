@@ -123,11 +123,15 @@ class RosterTableCell {
     required this.text,
     required this.isMe,
     required this.isPlaceholder,
+    this.isConflict = false,
   });
 
   final String text;
   final bool isMe;
   final bool isPlaceholder;
+
+  /// 同一天被排到兩項以上的服事（給安排的人看的提醒，不是錯誤）。
+  final bool isConflict;
 }
 
 /// 表格的「一行」。一般主日一天兩行（台、華），聯合崇拜一天一行（合）。
@@ -172,20 +176,29 @@ class RosterTableModel {
 ///   其他服事都是華語同工，放「華」行；寫著「台語」的佔位放「台」行。
 /// - 聯合崇拜只有一場，合併成一行（「合」）。
 /// - 整段期間都沒人排的服事項目不出現在表格上。
+///
+/// [alwaysShowRoles]（編輯用）：這些服事項目沒人排也要有一欄，才有地方點。
+/// [editing] 為 true 時，講員以外的欄位整格放在「華」行（佔位字也是），
+/// 點哪一行都是改同一項服事。
 RosterTableModel buildRosterTable(
   List<ServiceRoster> rosters, {
   String? userId,
   String? userName,
+  List<String> alwaysShowRoles = const [],
+  bool editing = false,
 }) {
-  final hasLanes = rosters.any(
-    (r) => r.duties.any(
-      (d) =>
-          (d.role == kTwSpeakerRole || d.role == kMwSpeakerRole) &&
-          d.people.isNotEmpty,
-    ),
-  );
+  bool isSpeaker(String role) =>
+      role == kTwSpeakerRole || role == kMwSpeakerRole;
+  final hasLanes =
+      alwaysShowRoles.any(isSpeaker) ||
+      rosters.any(
+        (r) => r.duties.any((d) => isSpeaker(d.role) && d.people.isNotEmpty),
+      );
 
-  final otherRoles = <String>[];
+  final otherRoles = <String>[
+    for (final role in alwaysShowRoles)
+      if (!isSpeaker(role)) role,
+  ];
   for (final r in rosters) {
     for (final d in r.duties) {
       if (d.people.isEmpty) continue;
@@ -204,10 +217,15 @@ RosterTableModel buildRosterTable(
       RosterTableColumn(header: shortRoleHeader(role), roles: [role]),
   ];
 
-  RosterTableCell cell(RosterEntry duty, String person) => RosterTableCell(
+  RosterTableCell cell(
+    RosterEntry duty,
+    String person,
+    Set<String> conflicts,
+  ) => RosterTableCell(
     text: shortPersonName(person),
     isMe: isPersonMe(duty, person, userId: userId, userName: userName),
     isPlaceholder: isPlaceholderPerson(person),
+    isConflict: conflicts.contains(person.trim()),
   );
 
   List<RosterTableCell> cellsFor(
@@ -221,7 +239,7 @@ RosterTableModel buildRosterTable(
       for (final duty in roster.duties.where((d) => d.role == role)) {
         for (final person in duty.people) {
           if (!keep(person) || !seen.add(person)) continue;
-          out.add(cell(duty, person));
+          out.add(cell(duty, person, doubleBookedPeople(roster)));
         }
       }
     }
@@ -254,7 +272,11 @@ RosterTableModel buildRosterTable(
           cellsFor(
             roster,
             c.roles,
-            (p) => taiwanese ? isPlaceholderPerson(p) : !isPlaceholderPerson(p),
+            editing
+                ? (_) => !taiwanese
+                : (p) => taiwanese
+                      ? isPlaceholderPerson(p)
+                      : !isPlaceholderPerson(p),
           ),
     ];
     rows
@@ -279,4 +301,58 @@ RosterTableModel buildRosterTable(
   }
 
   return RosterTableModel(columns: columns, rows: rows, hasLanes: hasLanes);
+}
+
+/// 同一天被排到兩項以上服事的人（同一項裡重複寫兩次不算）。佔位字不算。
+Set<String> doubleBookedPeople(ServiceRoster roster) {
+  final seen = <String>{};
+  final twice = <String>{};
+  for (final duty in roster.duties) {
+    for (final person in duty.people.map((p) => p.trim()).toSet()) {
+      if (person.isEmpty || isPlaceholderPerson(person)) continue;
+      if (!seen.add(person)) twice.add(person);
+    }
+  }
+  return twice;
+}
+
+/// 點表格的某一格時，要改的是哪一項服事。
+///
+/// 講員欄：「台」行改台語講員、「華」行改華語講員；聯合崇拜那一行改已經
+/// 排了的那一位（都沒排時預設台語講員）。其他欄就是該欄的服事項目。
+String roleForCell(RosterTableRow row, RosterTableColumn column) {
+  if (column.roles.length == 1) return column.roles.single;
+  switch (row.lane) {
+    case '台':
+      return kTwSpeakerRole;
+    case '華':
+      return kMwSpeakerRole;
+    default:
+      final hasMw = row.roster.duties.any(
+        (d) => d.role == kMwSpeakerRole && d.people.isNotEmpty,
+      );
+      final hasTw = row.roster.duties.any(
+        (d) => d.role == kTwSpeakerRole && d.people.isNotEmpty,
+      );
+      return hasMw && !hasTw ? kMwSpeakerRole : kTwSpeakerRole;
+  }
+}
+
+/// 這段期間每個人排了幾次（一天排兩項算兩次）。由多到少，同次數依名字排。
+List<MapEntry<String, int>> serviceCounts(List<ServiceRoster> rosters) {
+  final counts = <String, int>{};
+  for (final roster in rosters) {
+    for (final duty in roster.duties) {
+      for (final person in duty.people.map((p) => p.trim()).toSet()) {
+        if (person.isEmpty || isPlaceholderPerson(person)) continue;
+        counts[person] = (counts[person] ?? 0) + 1;
+      }
+    }
+  }
+  final list = counts.entries.toList()
+    ..sort((a, b) {
+      final byCount = b.value.compareTo(a.value);
+      return byCount != 0 ? byCount : a.key.compareTo(b.key);
+    });
+  return list;
 }

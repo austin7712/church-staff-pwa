@@ -15,6 +15,9 @@ class RosterTableView extends StatelessWidget {
     this.userId,
     this.userName,
     this.controller,
+    this.onCellTap,
+    this.alwaysShowRoles = const [],
+    this.showCounts = false,
   });
 
   final List<ServiceRoster> rosters;
@@ -22,12 +25,30 @@ class RosterTableView extends StatelessWidget {
   final String? userName;
   final ScrollController? controller;
 
+  /// 給了就是「編輯表格」：每一格都可以點，空格顯示「＋」，同一天重複排到
+  /// 的人標紅。由編輯模式提供（選人視窗在那邊）。
+  final void Function(RosterTableRow row, RosterTableColumn column)? onCellTap;
+
+  /// 編輯時沒人排也要顯示的服事項目（服事項目設定裡的清單）。
+  final List<String> alwaysShowRoles;
+
+  /// 表格下方列出這段期間每個人排了幾次。
+  final bool showCounts;
+
+  bool get _editing => onCellTap != null;
+
   static const _divider = Color(0xFFE3E7ED);
   static const _dayDivider = Color(0xFFC9D1DB);
 
   @override
   Widget build(BuildContext context) {
-    final model = buildRosterTable(rosters, userId: userId, userName: userName);
+    final model = buildRosterTable(
+      rosters,
+      userId: userId,
+      userName: userName,
+      alwaysShowRoles: alwaysShowRoles,
+      editing: _editing,
+    );
     final muted = Colors.grey[700]!;
 
     final widths = <int, TableColumnWidth>{
@@ -111,14 +132,13 @@ class RosterTableView extends StatelessWidget {
                   ),
                 ),
               ),
-            for (final cell in row.cells)
-              Padding(
+            for (var c = 0; c < row.cells.length; c++)
+              _cellWidget(
+                context,
+                row: row,
+                column: model.columns[c],
+                cell: row.cells[c],
                 padding: vPad,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [for (final p in cell) _NameTag(cell: p)],
-                ),
               ),
           ],
         ),
@@ -143,6 +163,14 @@ class RosterTableView extends StatelessWidget {
             children: rows,
           ),
         ),
+        if (_editing)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
+            child: Text(
+              '點任何一格就能修改。紅框＝同一天排了兩項以上（只是提醒，不會擋）。',
+              style: TextStyle(fontSize: 12, color: muted, height: 1.5),
+            ),
+          ),
         if (model.hasLanes)
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
@@ -152,7 +180,103 @@ class RosterTableView extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: muted, height: 1.5),
             ),
           ),
+        if (showCounts) _CountsCard(rosters: rosters),
       ],
+    );
+  }
+
+  Widget _cellWidget(
+    BuildContext context, {
+    required RosterTableRow row,
+    required RosterTableColumn column,
+    required List<RosterTableCell> cell,
+    required EdgeInsets padding,
+  }) {
+    final content = Padding(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final p in cell) _NameTag(cell: p, showConflict: _editing),
+          // 空格給一個「＋」，看得出來可以點。「台」行講員以外的格子是空的
+          // 但點了改的是同一項服事（放在「華」行），就不放「＋」以免重複。
+          if (_editing &&
+              cell.isEmpty &&
+              (column.roles.length == 2 || row.lane != '台'))
+            Text(
+              '＋',
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            ),
+        ],
+      ),
+    );
+    if (!_editing) return content;
+    return InkWell(
+      onTap: () => onCellTap!(row, column),
+      child: ConstrainedBox(
+        // 空格也要夠高才好點。
+        constraints: const BoxConstraints(minHeight: 32),
+        child: content,
+      ),
+    );
+  }
+}
+
+/// 每個人這段期間排了幾次，幫安排的人平均分配。
+class _CountsCard extends StatelessWidget {
+  const _CountsCard({required this.rosters});
+
+  final List<ServiceRoster> rosters;
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = serviceCounts(rosters);
+    if (counts.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: RosterTableView._divider),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '服事次數（這段期間）',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final entry in counts)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kRosterPlaceholderFill,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${entry.key} ${entry.value}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -195,9 +319,10 @@ class _DateCell extends StatelessWidget {
 }
 
 class _NameTag extends StatelessWidget {
-  const _NameTag({required this.cell});
+  const _NameTag({required this.cell, this.showConflict = false});
 
   final RosterTableCell cell;
+  final bool showConflict;
 
   @override
   Widget build(BuildContext context) {
@@ -218,6 +343,9 @@ class _NameTag extends StatelessWidget {
       fill = null;
       text = const Color(0xFF1B2430);
       weight = FontWeight.normal;
+    }
+    if (showConflict && cell.isConflict) {
+      border = Border.all(color: kRosterConflict, width: 1.5);
     }
     return Container(
       margin: const EdgeInsets.only(bottom: 2),

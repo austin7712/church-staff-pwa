@@ -16,10 +16,13 @@ import 'duty_row.dart';
 import '../../domain/staff_directory.dart';
 import '../../domain/staff_order.dart';
 import 'event_color_picker.dart';
+import 'roster_table_view.dart';
+import '../../domain/roster_view_model.dart';
 
 part '_roster_people_dialog.dart';
 part '_special_event_dialog.dart';
 part '_swap_duty_dialog.dart';
+part '_roster_edit_table.dart';
 
 /// 寫一張服事表。失敗時就地跳 snackbar，不動整頁 —— provider 的寫入失敗
 /// 一律往上丟（見 [RosterProvider.updateRoster]），不會變成整頁的錯誤畫面。
@@ -454,47 +457,56 @@ class RosterCard extends StatelessWidget {
     ServiceType rosterType,
     List<String> extras,
     String? role,
-  ) async {
-    final provider = context.read<RosterProvider>();
-    final staff = StaffDirectory.fromUsers(
-      await context.read<UserAdminProvider>().getUsers(),
-      rosterType,
-    );
-    final roleKey = role?.trim() ?? '';
-    final extrasSet = extras
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toSet();
-    final rosterPeople = roleKey.isEmpty
-        ? <String>{}
-        : provider
-              .getRostersByType(rosterType)
-              .expand((roster) => roster.duties)
-              .where((duty) => duty.role.trim() == roleKey)
-              .expand((duty) => duty.people)
-              .map((name) => name.trim())
-              .where((name) => name.isNotEmpty && name != placeholderPerson)
-              .toSet();
-    final names = roleKey.isEmpty
-        ? const <String>[]
-        : staff.namesForRole(roleKey);
-    final Set<String> merged = {...names, ...rosterPeople, ...extrasSet};
-    final List<String> result = [placeholderPerson];
-    // 照同工排序排：視窗裡的先後就是這一項服事每一週的先後，拖曳改的也是它。
-    result.addAll(
-      provider
-          .staffOrderFor(rosterType)
-          .sort(
-            roleKey,
-            merged.where((name) => name != placeholderPerson).toList(),
-          ),
-    );
-    return _PeopleOptions(
-      options: result,
-      allUserNames: staff.names.toSet(),
-      userIdsByName: staff.idByName,
-    );
-  }
+  ) => _loadSelectablePeopleFor(context, rosterType, extras, role);
+}
+
+/// 選人視窗的候選名單：這項服事的同工、表上排過的人、這一格原本的人。
+/// 卡片與表格編輯共用。
+Future<_PeopleOptions> _loadSelectablePeopleFor(
+  BuildContext context,
+  ServiceType rosterType,
+  List<String> extras,
+  String? role,
+) async {
+  final provider = context.read<RosterProvider>();
+  final staff = StaffDirectory.fromUsers(
+    await context.read<UserAdminProvider>().getUsers(),
+    rosterType,
+  );
+  final roleKey = role?.trim() ?? '';
+  final extrasSet = extras
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toSet();
+  final rosterPeople = roleKey.isEmpty
+      ? <String>{}
+      : provider
+            .getRostersByType(rosterType)
+            .expand((roster) => roster.duties)
+            .where((duty) => duty.role.trim() == roleKey)
+            .expand((duty) => duty.people)
+            .map((name) => name.trim())
+            .where((name) => name.isNotEmpty && name != placeholderPerson)
+            .toSet();
+  final names = roleKey.isEmpty
+      ? const <String>[]
+      : staff.namesForRole(roleKey);
+  final Set<String> merged = {...names, ...rosterPeople, ...extrasSet};
+  final List<String> result = [placeholderPerson];
+  // 照同工排序排：視窗裡的先後就是這一項服事每一週的先後，拖曳改的也是它。
+  result.addAll(
+    provider
+        .staffOrderFor(rosterType)
+        .sort(
+          roleKey,
+          merged.where((name) => name != placeholderPerson).toList(),
+        ),
+  );
+  return _PeopleOptions(
+    options: result,
+    allUserNames: staff.names.toSet(),
+    userIdsByName: staff.idByName,
+  );
 }
 
 /// [RosterCard] 展開後的服事項目列表。
