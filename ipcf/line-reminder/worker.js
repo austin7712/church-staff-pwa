@@ -205,6 +205,14 @@ function fsValue(v) {
   return null;
 }
 
+// 跟 app 一致的服事項目名稱（lib/features/roster/domain/role_names.dart）
+const ROLE_ALIASES = {
+  報告: '司會報告', 司會: '司會報告', 敬拜主領: '敬拜讚美', 收奉: '奉獻點算', 收奉獻: '奉獻點算',
+  奉獻: '奉獻點算', 聖餐: '聖餐長老', 兒童主日學: '兒童主日', 幼兒主日學: '幼兒主日',
+  愛餐整潔: '愛餐整理', 愛餐: '愛餐整理',
+};
+const canonicalRole = (r) => ROLE_ALIASES[(r || '').trim()] || (r || '').trim();
+
 /** 讀取 dateKey 在 [fromKey, toKey] 之間的服事表 */
 export async function fetchRosters(env, fromKey, toKey, fetchImpl = fetch) {
   const token = await firestoreToken(env, fetchImpl);
@@ -237,7 +245,7 @@ export async function fetchRosters(env, fromKey, toKey, fetchImpl = fetch) {
       return {
         dateKey: fsValue(f.dateKey),
         serviceName: fsValue(f.serviceName) || '主日崇拜',
-        duties: (fsValue(f.duties) || []).map((d) => ({ role: d?.role || '', people: d?.people || [] })),
+        duties: (fsValue(f.duties) || []).map((d) => ({ role: canonicalRole(d?.role), people: d?.people || [] })),
       };
     });
 }
