@@ -166,14 +166,30 @@ class _RosterScreenState extends State<RosterScreen>
       actions: [
         // 放在標題列而不是清單上方：清單上多一列會讓檢視／編輯模式切換時
         // 同一天的位置差一截（見 roster_scroll_anchor_test）。
-        IconButton(
-          icon: Icon(
-            _mineOnly ? Icons.person : Icons.person_outline,
-            color: _mineOnly ? kRosterMeBorder : null,
+        Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: FilterChip(
+            label: const Text('只看我的'),
+            tooltip: _mineOnly ? '顯示全部服事' : '只看我的服事',
+            selected: _mineOnly,
+            onSelected: (_) => setState(() => _mineOnly = !_mineOnly),
+            showCheckmark: false,
+            avatar: Icon(
+              _mineOnly ? Icons.person : Icons.person_outline,
+              size: 18,
+              color: _mineOnly ? kRosterMeText : null,
+            ),
+            selectedColor: kRosterMeFill,
+            side: BorderSide(
+              color: _mineOnly ? kRosterMeBorder : Colors.grey[400]!,
+            ),
+            labelStyle: TextStyle(
+              color: _mineOnly ? kRosterMeText : null,
+              fontWeight: _mineOnly ? FontWeight.bold : null,
+            ),
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
-          isSelected: _mineOnly,
-          tooltip: _mineOnly ? '顯示全部服事' : '只看我的服事',
-          onPressed: () => setState(() => _mineOnly = !_mineOnly),
         ),
         // 有字的切換鈕：只有圖示的話，同工不知道可以切成表格。
         Padding(
@@ -395,7 +411,7 @@ class _RosterViewListState extends State<_RosterViewList>
       body = const EmptyState(
         icon: Icons.event_available_outlined,
         message: '這段期間沒有排到你的服事',
-        hint: '再按一次右上角的人像按鈕，可以回到完整的服事表',
+        hint: '再按一次右上角的「只看我的」，可以回到完整的服事表',
       );
     } else if (widget.tableMode) {
       body = RosterTableView(
