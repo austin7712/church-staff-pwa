@@ -198,8 +198,8 @@ AutoAssignResult autoAssign({
   final planCounts = <String, Map<String, int>>{};
   // 每項服事每個人最後一次排到的日期（歷史＋這次）。
   final lastServed = <String, Map<String, DateTime>>{};
-  // 每一天已經有服事的人。
-  final busy = <String, Set<String>>{};
+  // 每一天已經有服事的人，和他那天排了哪些項目。
+  final busy = <String, Map<String, Set<String>>>{};
 
   void record(String role, String person, DateTime date, {bool count = true}) {
     if (count) {
@@ -225,7 +225,10 @@ AutoAssignResult autoAssign({
       for (final p in duty.people) {
         final name = p.trim();
         if (name.isEmpty || isPlaceholderPerson(name)) continue;
-        busy.putIfAbsent(dayKey(roster.date), () => {}).add(name);
+        busy
+            .putIfAbsent(dayKey(roster.date), () => {})
+            .putIfAbsent(name, () => {})
+            .add(duty.role);
         if (targets.contains(roster)) record(duty.role, name, roster.date);
       }
     }
@@ -319,7 +322,11 @@ AutoAssignResult autoAssign({
 
       final candidates =
           (eligible[duty.role] ?? const <String>{})
-              .where((p) => !dayBusy.contains(p))
+              .where(
+                (p) => (dayBusy[p] ?? const <String>{}).every(
+                  (other) => rolesCanShare(other, duty.role),
+                ),
+              )
               .toList()
             ..sort((a, b) {
               final byCount = (counts[a] ?? 0).compareTo(counts[b] ?? 0);
@@ -349,7 +356,7 @@ AutoAssignResult autoAssign({
       }
       for (final p in picked) {
         record(duty.role, p, roster.date);
-        dayBusy.add(p);
+        dayBusy.putIfAbsent(p, () => {}).add(duty.role);
       }
       duties.add(duty.copyWith(people: picked, personIdsByName: const {}));
       changed = true;

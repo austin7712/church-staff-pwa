@@ -351,4 +351,33 @@ void main() {
     expect(duties.map((d) => d.role), ['音控', '幼兒主日']);
     expect(duties.last.people, ['Tiyu']);
   });
+
+  test('一鍵安排：奉獻點算可以排同一天有別的服事的人；聖餐長老可以是司會報告', () {
+    final result = autoAssign(
+      targets: [
+        _week(
+          DateTime.utc(2027, 1, 3),
+          {
+            '司會報告': ['CT'],
+            '音控': ['Kevin'],
+            '奉獻點算': ['待定'],
+            '聖餐長老': ['待定'],
+            '敬拜讚美': ['待定'],
+          },
+          events: const ['聖餐'],
+        ),
+      ],
+      history: const [],
+      eligible: const {
+        '奉獻點算': {'Kevin'},
+        '聖餐長老': {'CT'},
+        '敬拜讚美': {'CT'},
+      },
+    );
+    List<String> of(String role) =>
+        result.updated.single.duties.firstWhere((d) => d.role == role).people;
+    expect(of('奉獻點算'), ['Kevin']);
+    expect(of('聖餐長老'), ['CT']);
+    expect(of('敬拜讚美'), ['待定'], reason: 'CT 已經是司會報告');
+  });
 }

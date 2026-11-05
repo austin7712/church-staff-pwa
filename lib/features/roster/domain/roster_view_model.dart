@@ -1,5 +1,6 @@
 import '../../../core/types/service_type.dart';
 import 'entities/service_roster.dart';
+import 'role_names.dart';
 
 /// 服事表「檢視模式」用到的純邏輯：誰是我、哪些是佔位字、表格怎麼排。
 ///
@@ -324,20 +325,38 @@ RosterTableModel buildRosterTable(
 
 /// 同一天被排到兩項以上服事的人（同一項裡重複寫兩次不算）。佔位字不算。
 Set<String> doubleBookedPeople(ServiceRoster roster) {
-  final seen = <String>{};
-  final twice = <String>{};
-  // 同一位講員台語、華語都講是常態（兩堂各講一次），不算重複。
-  final speakers = <String>{};
+  final rolesByPerson = <String, List<String>>{};
   for (final duty in roster.duties) {
-    final isSpeaker =
-        duty.role == kTwSpeakerRole || duty.role == kMwSpeakerRole;
     for (final person in duty.people.map((p) => p.trim()).toSet()) {
-      if (isSpeaker && !speakers.add(person)) continue;
       if (person.isEmpty || isPlaceholderPerson(person)) continue;
-      if (!seen.add(person)) twice.add(person);
+      rolesByPerson.putIfAbsent(person, () => []).add(duty.role);
     }
   }
-  return twice;
+  return {
+    for (final MapEntry(key: person, value: roles) in rolesByPerson.entries)
+      if ([
+        for (var i = 0; i < roles.length; i++)
+          for (var j = i + 1; j < roles.length; j++)
+            rolesCanShare(roles[i], roles[j]),
+      ].contains(false))
+        person,
+  };
+}
+
+/// 同一天同一個人可以同時做的兩項服事（教會的規則）：
+/// - 奉獻點算是聚會後另外做的，跟哪一項都不衝突。
+/// - 聖餐長老與司會報告可以是同一位。
+/// - 同一位講員台語、華語都講（兩堂各講一次）。
+/// 其他項目同一天只能排一項。
+bool rolesCanShare(String a, String b) {
+  final x = canonicalRole(a);
+  final y = canonicalRole(b);
+  if (x == y) return false;
+  if (x == '奉獻點算' || y == '奉獻點算') return true;
+  final pair = {x, y};
+  if (pair.containsAll(const ['聖餐長老', '司會報告'])) return true;
+  if (pair.containsAll(const [kTwSpeakerRole, kMwSpeakerRole])) return true;
+  return false;
 }
 
 /// 點表格的某一格時，要改的是哪一項服事。

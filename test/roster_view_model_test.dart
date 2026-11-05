@@ -155,7 +155,7 @@ void main() {
     test('同一天排到兩項的人標出來；佔位字與同項重複不算', () {
       final day = _day('d', [
         RosterEntry(role: '報告', people: const ['Joe']),
-        RosterEntry(role: '奉獻點算', people: const ['Joe', 'Joe']),
+        RosterEntry(role: '敬拜讚美', people: const ['Joe', 'Joe']),
         RosterEntry(role: '音控', people: const ['台語']),
         RosterEntry(role: '敬拜主領', people: const ['台語']),
       ]);
@@ -270,5 +270,22 @@ void main() {
     expect(rosterNameMatchesUser('Lin', 'Austin Lin'), isFalse);
     expect(rosterNameMatchesUser('Austin Wang', 'Austin Lin'), isFalse);
     expect(rosterNameMatchesUser('林', '林國泰'), isFalse);
+  });
+
+  test('同一天可以同時做的：奉獻點算跟誰都可以、聖餐長老與司會報告可以', () {
+    final day = _day('r', [
+      RosterEntry(role: '司會報告', people: const ['CT']),
+      RosterEntry(role: '聖餐長老', people: const ['CT', 'Joe']),
+      RosterEntry(role: '奉獻點算', people: const ['Joe', 'Kevin']),
+      RosterEntry(role: '音控', people: const ['Kevin']),
+    ]);
+    expect(doubleBookedPeople(day), isEmpty);
+    final bad = _day('b', [
+      RosterEntry(role: '音控', people: const ['CT']),
+      RosterEntry(role: '敬拜讚美', people: const ['CT']),
+    ]);
+    expect(doubleBookedPeople(bad), {'CT'});
+    expect(rolesCanShare('收奉', '音控'), isTrue, reason: '舊名字也照規則');
+    expect(rolesCanShare('兒童主日', '音控'), isFalse);
   });
 }
