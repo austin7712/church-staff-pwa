@@ -7,6 +7,9 @@ import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../../../auth/presentation/providers/session_provider.dart';
 import '../providers/roster_provider.dart';
 import '../widgets/roster_view_card.dart';
+import '../widgets/roster_table_view.dart';
+import '../widgets/roster_view_colors.dart';
+import '../../domain/roster_view_model.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/utils/scroll_anchor.dart';
@@ -27,6 +30,12 @@ class _RosterScreenState extends State<RosterScreen>
   bool _editReady = false;
   bool _isLoadingEdit = false;
   TabController? _tabController;
+
+  /// 檢視方式：卡片（預設）或像紙本一樣的表格。各分頁共用同一個選擇。
+  bool _tableMode = false;
+
+  /// 只列出排到自己的那幾天。
+  bool _mineOnly = false;
 
   Future<void> _loadEditLibrary(
     BuildContext context,
@@ -155,6 +164,13 @@ class _RosterScreenState extends State<RosterScreen>
       title: Text(titleText),
       centerTitle: true,
       actions: [
+        IconButton(
+          icon: Icon(
+            _tableMode ? Icons.view_agenda_outlined : Icons.table_rows_outlined,
+          ),
+          tooltip: _tableMode ? '切換至卡片檢視' : '切換至表格檢視',
+          onPressed: () => setState(() => _tableMode = !_tableMode),
+        ),
         if (canEdit)
           IconButton(
             icon: const Icon(Icons.edit),
@@ -243,6 +259,9 @@ class _RosterScreenState extends State<RosterScreen>
                 return _RosterViewList(
                   key: PageStorageKey(type.toString()),
                   type: type,
+                  tableMode: _tableMode,
+                  mineOnly: _mineOnly,
+                  onToggleMine: () => setState(() => _mineOnly = !_mineOnly),
                 );
               }).toList(),
             );
@@ -255,8 +274,17 @@ class _RosterScreenState extends State<RosterScreen>
 
 class _RosterViewList extends StatefulWidget {
   final ServiceType type;
+  final bool tableMode;
+  final bool mineOnly;
+  final VoidCallback onToggleMine;
 
-  const _RosterViewList({super.key, required this.type});
+  const _RosterViewList({
+    super.key,
+    required this.type,
+    required this.tableMode,
+    required this.mineOnly,
+    required this.onToggleMine,
+  });
 
   @override
   State<_RosterViewList> createState() => _RosterViewListState();
@@ -322,23 +350,94 @@ class _RosterViewListState extends State<_RosterViewList>
     // 一個 tear-off 重複用，不要在 itemBuilder 裡每張卡各配一個 closure。
     final resolveEventColor = context.read<RosterProvider>().eventColorOf;
 
-    return ListView.builder(
-      key: anchorListKey,
-      controller: anchorController,
-      padding: const EdgeInsets.only(top: 12, bottom: 20),
-      itemCount: rosters.length,
-      itemBuilder: (context, index) {
-        final roster = rosters[index];
-        return ScrollAnchorItem(
-          key: ValueKey(roster.id),
-          id: roster.id,
-          child: RosterViewCard(
-            roster: roster,
-            initiallyExpanded: index == 0,
-            resolveEventColor: resolveEventColor,
+    final userId = context.select<SessionProvider, String?>(
+      (session) => session.currentUser?.id,
+    );
+    final userName = context.select<SessionProvider, String?>(
+      (session) => session.currentUser?.name,
+    );
+    final myDays = rosters
+        .where(
+          (r) => rolesForUser(r, userId: userId, userName: userName).isNotEmpty,
+        )
+        .length;
+    final shown = widget.mineOnly
+        ? rosters
+              .where(
+                (r) => rolesForUser(
+                  r,
+                  userId: userId,
+                  userName: userName,
+                ).isNotEmpty,
+              )
+              .toList()
+        : rosters;
+
+    final Widget body;
+    if (shown.isEmpty) {
+      body = const EmptyState(
+        icon: Icons.event_available_outlined,
+        message: '這段期間沒有排到你的服事',
+        hint: '按上方的「只看我的」可以回到完整的服事表',
+      );
+    } else if (widget.tableMode) {
+      body = RosterTableView(
+        rosters: shown,
+        userId: userId,
+        userName: userName,
+      );
+    } else {
+      body = ListView.builder(
+        key: anchorListKey,
+        controller: anchorController,
+        padding: const EdgeInsets.only(top: 4, bottom: 20),
+        itemCount: shown.length,
+        itemBuilder: (context, index) {
+          final roster = shown[index];
+          return ScrollAnchorItem(
+            key: ValueKey(roster.id),
+            id: roster.id,
+            child: RosterViewCard(
+              roster: roster,
+              // 最近兩週先打開：同工最常看的就是這週和下週。
+              initiallyExpanded: index < 2,
+              resolveEventColor: resolveEventColor,
+              userId: userId,
+              userName: userName,
+            ),
+          );
+        },
+      );
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+          child: Row(
+            children: [
+              FilterChip(
+                label: const Text('只看我的'),
+                selected: widget.mineOnly,
+                onSelected: (_) => widget.onToggleMine(),
+                selectedColor: kRosterMeFill,
+                checkmarkColor: kRosterMeText,
+                side: BorderSide(
+                  color: widget.mineOnly ? kRosterMeBorder : Colors.grey[400]!,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  myDays > 0 ? '你有 $myDays 次服事，已用綠色標出' : '這段期間沒有排到你的服事',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                ),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+        Expanded(child: body),
+      ],
     );
   }
 }

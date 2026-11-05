@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/roster_view_model.dart';
+import 'roster_view_colors.dart';
+
 /// 編輯模式一列服事的最小高度。
 ///
 /// 48 是那顆刪除 IconButton 的觸控目標高度，給長輩按的，不能再縮。檢視模式
@@ -18,6 +21,8 @@ class DutyRow extends StatelessWidget {
     this.roleColor,
     this.trailing = const [],
     this.dense = false,
+    this.highlightedPeople = const {},
+    this.showPlaceholderLabels = false,
   });
 
   final String role;
@@ -35,6 +40,49 @@ class DutyRow extends StatelessWidget {
   /// 拿來讀的，一頁看得到幾天比每列多出 25px 的留白重要。文字靠上對齊，名字
   /// 換行時項目名稱才不會跟著往下飄。
   final bool dense;
+
+  /// 要特別標出來的名字（檢視模式標出「我」）。編輯模式不傳。
+  final Set<String> highlightedPeople;
+
+  /// 把「台語」顯示成灰色的「台語堂負責」，跟真的人名分開。只給檢視模式用。
+  final bool showPlaceholderLabels;
+
+  static const _nameStyle = TextStyle(fontSize: 16, fontWeight: FontWeight.bold);
+
+  Widget _person(String person, bool isLast) {
+    final sep = isLast ? '' : '、';
+    if (highlightedPeople.contains(person)) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: kRosterMeFill,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: kRosterMeBorder, width: 1.5),
+            ),
+            child: Text(
+              person,
+              style: _nameStyle.copyWith(color: kRosterMeText),
+            ),
+          ),
+          if (sep.isNotEmpty) const Text('、', style: _nameStyle),
+        ],
+      );
+    }
+    if (showPlaceholderLabels && isPlaceholderPerson(person)) {
+      return Text(
+        '${displayPersonName(person)}$sep',
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+          color: Colors.grey[600],
+        ),
+      );
+    }
+    return Text('$person$sep', style: _nameStyle);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,15 +106,11 @@ class DutyRow extends StatelessWidget {
         Expanded(
           // 一個名字一段（頓號跟在名字後面），斷行機會就只剩名字之間。
           child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 2,
             children: [
               for (var i = 0; i < people.length; i++)
-                Text(
-                  i == people.length - 1 ? people[i] : '${people[i]}、',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                _person(people[i], i == people.length - 1),
             ],
           ),
         ),

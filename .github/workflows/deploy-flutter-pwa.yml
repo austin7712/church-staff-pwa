@@ -91,6 +91,26 @@ jobs:
         with:
           node-version: '22'
 
+      # 網站原本是用安裝精靈裝的，教會 Logo 是精靈產生的，不在原始碼裡。
+      # 設了 CHURCH_BRANDING_URL（目前的網站網址）就先把線上那五張圖示抓回來，
+      # 部署後才不會變回預設圖示。
+      - name: Keep the current church logo
+        if: ${{ vars.CHURCH_BRANDING_URL != '' }}
+        env:
+          CHURCH_BRANDING_URL: ${{ vars.CHURCH_BRANDING_URL }}
+        run: |
+          set -euo pipefail
+          base="${CHURCH_BRANDING_URL%/}"
+          for f in favicon.png icons/Icon-192.png icons/Icon-512.png icons/Icon-maskable-192.png icons/Icon-maskable-512.png; do
+            curl -fsSL --retry 3 "$base/$f" -o "web/$f.download"
+            # 只接受真的 PNG，避免把錯誤頁面當成圖示部署上去。
+            if [ "$(head -c 8 "web/$f.download" | od -An -tx1 | tr -d ' \n')" != "89504e470d0a1a0a" ]; then
+              echo "::error::$base/$f is not a PNG"
+              exit 1
+            fi
+            mv "web/$f.download" "web/$f"
+          done
+
       # A missing deployment config must never reset an existing church to the
       # neutral example. Settings are public, but may be supplied as a secret.
       - name: Prepare church deployment
