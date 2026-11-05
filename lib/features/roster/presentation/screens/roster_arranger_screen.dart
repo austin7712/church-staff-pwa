@@ -490,21 +490,23 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: Row(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
                     child: Text(
                       '先整理「同工名單」（每一項可以排誰，愛餐整理是小組），再按「一鍵安排」把所有服事的空格一起公平地填上（講員不排）。會先預覽，確認後才寫入。',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
-                  const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: _assigning ? null : _editPool,
                     icon: const Icon(Icons.groups_outlined),
                     label: const Text('同工名單'),
                   ),
-                  const SizedBox(width: 8),
                   FilledButton.tonalIcon(
                     onPressed: _assigning ? null : _autoAssign,
                     icon: _assigning
@@ -516,7 +518,6 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
                         : const Icon(Icons.auto_fix_high_outlined),
                     label: const Text('一鍵安排'),
                   ),
-                  const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: _assigning ? null : _clearAll,
                     icon: const Icon(Icons.cleaning_services_outlined),
