@@ -7,6 +7,8 @@ import '../../../../core/utils/error_messages.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../domain/entities/service_roster.dart';
 import '../../domain/roster_schedule.dart';
+import '../../domain/roster_auto_assign.dart';
+import '../../domain/roster_view_model.dart';
 import '../providers/roster_provider.dart';
 import '../widgets/roster_card.dart';
 
@@ -61,8 +63,12 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
   ArrangerPeriod _period = ArrangerPeriod.year;
 
   List<ServiceRoster>? _rosters;
+
+  /// 同一段期間其他聚會的服事表（一鍵安排時避免同一天排到同一個人）。
+  List<ServiceRoster> _others = const [];
   String? _error;
   bool _creating = false;
+  bool _assigning = false;
 
   /// 第四季就預設排明年：那時候要排的通常是下一年度的表。
   static int _defaultYear() {
@@ -88,7 +94,10 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         to,
       );
       if (!mounted) return;
-      setState(() => _rosters = all.where((r) => r.type == _type).toList());
+      setState(() {
+        _rosters = all.where((r) => r.type == _type).toList();
+        _others = all.where((r) => r.type != _type).toList();
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = mapErrorToUserMessage(e));
@@ -149,6 +158,95 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
       if (mounted) setState(() => _creating = false);
     }
     if (mounted) await _load();
+  }
+
+  Future<void> _autoAssign() async {
+    final rosters = _rosters;
+    if (rosters == null || _assigning) return;
+    final provider = context.read<RosterProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    final (from, _) = _period.range(_year);
+    setState(() => _assigning = true);
+    try {
+      // 歷史：這段期間之前的一年，同一個聚會。
+      final history = (await provider.loadRostersInRange(
+        from.subtract(const Duration(days: 365)),
+        from.subtract(const Duration(days: 1)),
+      )).where((r) => r.type == _type).toList();
+      if (!mounted) return;
+
+      final counts = roleHistoryCounts([...history, ...rosters]);
+      final roles = [
+        for (final role in provider.templates[_type] ?? const <String>[])
+          if (role != kTwSpeakerRole &&
+              role != kMwSpeakerRole &&
+              (counts[role]?.isNotEmpty ?? false))
+            role,
+      ];
+      if (roles.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('沒有歷史資料可以參考，無法一鍵安排')),
+        );
+        return;
+      }
+
+      final eligible = await showDialog<Map<String, Set<String>>>(
+        context: context,
+        builder: (_) => _EligibilityDialog(
+          roles: roles,
+          counts: counts,
+          initial: defaultEligible(counts),
+        ),
+      );
+      if (eligible == null || !mounted) return;
+
+      final result = autoAssign(
+        targets: rosters,
+        history: history,
+        eligible: eligible,
+        sameDayOthers: _others,
+      );
+      if (result.updated.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('沒有需要安排的空格')),
+        );
+        return;
+      }
+
+      final apply = await showDialog<bool>(
+        context: context,
+        builder: (_) => _PreviewDialog(result: result),
+      );
+      if (apply != true || !mounted) return;
+
+      final originals = {for (final r in rosters) r.id: r};
+      final before = [
+        for (final r in result.updated)
+          if (originals[r.id] != null) originals[r.id]!,
+      ];
+      await provider.updateRosters(result.updated);
+      if (!mounted) return;
+      await _load();
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 10),
+          content: Text('已安排 ${result.assignments.length} 格'),
+          action: SnackBarAction(
+            label: '復原',
+            onPressed: () async {
+              await provider.updateRosters(before);
+              if (mounted) await _load();
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('一鍵安排失敗：${mapErrorToUserMessage(e)}')),
+      );
+    } finally {
+      if (mounted) setState(() => _assigning = false);
+    }
   }
 
   void _onSaved(ServiceRoster updated) {
@@ -250,6 +348,31 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
       } else {
         body = Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '一鍵安排：依今年的歷史，把空格公平地填上做過這項服事的人（講員不排）。先預覽，確認後才寫入。',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: _assigning ? null : _autoAssign,
+                    icon: _assigning
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_fix_high_outlined),
+                    label: const Text('一鍵安排'),
+                  ),
+                ],
+              ),
+            ),
             if (missing > 0)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -294,6 +417,163 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 一鍵安排第一步：每一項服事可以排哪些人。預設勾選做過 2 次以上的人；
+/// 安排者可以再勾（例如請產假剛回來、今年做得少的同工）或取消。
+class _EligibilityDialog extends StatefulWidget {
+  const _EligibilityDialog({
+    required this.roles,
+    required this.counts,
+    required this.initial,
+  });
+
+  final List<String> roles;
+  final Map<String, Map<String, int>> counts;
+  final Map<String, Set<String>> initial;
+
+  @override
+  State<_EligibilityDialog> createState() => _EligibilityDialogState();
+}
+
+class _EligibilityDialogState extends State<_EligibilityDialog> {
+  late final Map<String, Set<String>> _selected = {
+    for (final role in widget.roles)
+      role: {...?widget.initial[role]},
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('誰可以排？'),
+      content: SizedBox(
+        width: 560,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Text(
+              '每一項只會從勾選的人裡挑。預設勾選今年做過 2 次以上的人；數字是今年做過幾次。',
+              style: TextStyle(fontSize: 13),
+            ),
+            for (final role in widget.roles) ...[
+              const SizedBox(height: 14),
+              Text(role, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final entry in (widget.counts[role]!.entries.toList()
+                    ..sort((a, b) => b.value.compareTo(a.value))))
+                    FilterChip(
+                      label: Text('${entry.key} ${entry.value}'),
+                      selected: _selected[role]!.contains(entry.key),
+                      onSelected: (on) => setState(() {
+                        if (on) {
+                          _selected[role]!.add(entry.key);
+                        } else {
+                          _selected[role]!.remove(entry.key);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _selected),
+          child: const Text('下一步：預覽'),
+        ),
+      ],
+    );
+  }
+}
+
+/// 一鍵安排第二步：先看會怎麼排，確認後才寫入。
+class _PreviewDialog extends StatelessWidget {
+  const _PreviewDialog({required this.result});
+
+  final AutoAssignResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final byRoster = <String, List<AutoAssignment>>{};
+    for (final a in result.assignments) {
+      byRoster.putIfAbsent(a.roster.id, () => []).add(a);
+    }
+    final rosters = [
+      for (final r in result.updated)
+        if (byRoster.containsKey(r.id)) r,
+    ];
+    final counts = roleHistoryCounts(result.updated);
+    return AlertDialog(
+      title: Text('預覽：會填入 ${result.assignments.length} 格'),
+      content: SizedBox(
+        width: 620,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            if (result.shortfalls.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '有 ${result.shortfalls.length} 格人不夠，只排到一部分或沒排到：'
+                  '${result.shortfalls.map((a) => '${a.roster.date.month}/${a.roster.date.day} ${a.role}').join('、')}。'
+                  '可以回上一步多勾幾個人，或之後手動補。',
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            for (final r in rosters)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  '${r.date.month}/${r.date.day}'
+                  '${r.specialEvents.isEmpty ? '' : '（${r.specialEvents.join('・')}）'}　'
+                  '${byRoster[r.id]!.map((a) => '${a.role}：${a.people.map(shortPersonName).join('、')}').join('　')}',
+                  style: const TextStyle(fontSize: 13, height: 1.4),
+                ),
+              ),
+            const Divider(height: 24),
+            const Text(
+              '這段期間每人次數（含原本已排好的）',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            for (final MapEntry(key: role, value: byPerson) in counts.entries)
+              if (result.assignments.any((a) => a.role == role))
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '$role：${(byPerson.entries.toList()..sort((a, b) => b.value.compareTo(a.value))).map((e) => '${e.key} ${e.value}').join('、')}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('套用'),
+        ),
+      ],
     );
   }
 }
