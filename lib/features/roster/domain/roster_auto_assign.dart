@@ -1,4 +1,5 @@
 import 'entities/service_roster.dart';
+import 'role_names.dart';
 import 'roster_view_model.dart';
 import 'staff_directory.dart';
 
@@ -272,7 +273,15 @@ AutoAssignResult autoAssign({
       final stats =
           patterns[duty.role]?[_patternKey(roster, duty.role)] ??
           patterns[duty.role]?[_fallbackKey(roster, duty.role)];
-      final need = stats?.decide();
+      // 沒有歷史可以學（新加的服事，例如兒童主日）：名單上有人就每週排一位；
+      // 聖餐類只在聖餐週排。
+      final hasPool = (eligible[duty.role] ?? const <String>{}).isNotEmpty;
+      final need =
+          stats?.decide() ??
+          (hasPool &&
+                  (!_isCommunionRole(duty.role) || _hasCommunion(roster))
+              ? const _Need.people(1)
+              : null);
       if (need == null || (!need.taiwanese && need.count == 0)) {
         duties.add(duty);
         continue;
@@ -450,7 +459,7 @@ class StaffPool {
     return StaffPool({
       for (final e in pool.entries)
         if (e.key is String && e.value is List)
-          e.key as String: [
+          canonicalRole(e.key as String): [
             for (final v in e.value as List)
               if (v is String && v.trim().isNotEmpty) v.trim(),
           ],

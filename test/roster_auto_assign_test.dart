@@ -297,4 +297,23 @@ void main() {
       expect(months, {1: '溫柔小組', 2: '忍耐小組', 3: '喜樂小組'});
     });
   });
+
+  test('沒有歷史的新服事（兒童主日）：名單上有人就每週排一位、輪流', () {
+    final result = autoAssign(
+      targets: [
+        for (var i = 0; i < 4; i++)
+          _week(DateTime.utc(2027, 1, 3).add(Duration(days: 7 * i)), {
+            '兒童主日': ['待定'],
+          }),
+      ],
+      history: const [],
+      eligible: const {
+        '兒童主日': {'Ann', 'Ben'},
+      },
+    );
+    final order = [
+      for (final r in result.updated) r.duties.single.people.single,
+    ];
+    expect(order, ['Ann', 'Ben', 'Ann', 'Ben']);
+  });
 }

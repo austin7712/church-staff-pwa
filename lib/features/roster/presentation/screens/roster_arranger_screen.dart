@@ -59,7 +59,16 @@ class RosterArrangerScreen extends StatefulWidget {
 }
 
 class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
-  late ServiceType _type = widget.allowedTypes.first;
+  /// 有設定服事項目的聚會才排（沒有項目的分頁排不了東西）。
+  late final List<ServiceType> _types = () {
+    final templates = context.read<RosterProvider>().templates;
+    final withRoles = [
+      for (final t in widget.allowedTypes)
+        if ((templates[t] ?? const <String>[]).isNotEmpty) t,
+    ];
+    return withRoles.isEmpty ? widget.allowedTypes : withRoles;
+  }();
+  late ServiceType _type = _types.first;
   late int _year = _defaultYear();
   ArrangerPeriod _period = ArrangerPeriod.year;
 
@@ -172,6 +181,7 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
     })
   >
   _loadPool(RosterProvider provider, List<ServiceRoster> rosters) async {
+    final groups = allSmallGroups(context.read<GroupSettingsProvider>());
     final (from, _) = _period.range(_year);
     final history = (await provider.loadRostersInRange(
       from.subtract(const Duration(days: 365)),
@@ -180,17 +190,21 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
     final counts = roleHistoryCounts([...history, ...rosters]);
     final roles = [
       for (final role in provider.templates[_type] ?? const <String>[])
-        if (role != kTwSpeakerRole &&
-            role != kMwSpeakerRole &&
-            !isGroupRole(role))
-          role,
+        if (role != kTwSpeakerRole && role != kMwSpeakerRole) role,
     ];
     final saved = await provider.loadStaffPool(_type);
+    final pool = saved.withDefaults(counts, roles);
+    // 愛餐整理這類以小組為單位的：預設是小組管理裡的全部小組，順序就是輪流順序。
     return (
       history: history,
       counts: counts,
       roles: roles,
-      pool: saved.withDefaults(counts, roles),
+      pool: StaffPool({
+        for (final MapEntry(key: role, value: people) in pool.roles.entries)
+          role: isGroupRole(role) && saved.roles[role] == null
+              ? groups
+              : people,
+      }),
     );
   }
 
@@ -235,9 +249,9 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
       if (!mounted) return;
       final history = data.history;
       final eligible = data.pool.eligible;
-      final groups = allSmallGroups(context.read<GroupSettingsProvider>());
       final groupRoles = {
-        for (final role in provider.templates[_type] ?? const <String>[])
+        for (final MapEntry(key: role, value: groups)
+            in data.pool.roles.entries)
           if (isGroupRole(role) && groups.isNotEmpty) role: groups,
       };
       if (groupRoles.isEmpty &&
@@ -318,7 +332,9 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (widget.allowedTypes.length > 1)
+        if (_types.length == 1)
+          Text('總覽', style: Theme.of(context).textTheme.titleMedium),
+        if (_types.length > 1)
           DropdownButton<ServiceType>(
             value: _type,
             onChanged: (value) {
@@ -327,7 +343,7 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
               _load();
             },
             items: [
-              for (final type in widget.allowedTypes)
+              for (final type in _types)
                 DropdownMenuItem(value: type, child: Text(type.serviceName)),
             ],
           ),
@@ -403,7 +419,7 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      '先整理「同工名單」（每一項可以排誰），再按「一鍵安排」把空格公平地填上（講員不排）。會先預覽，確認後才寫入。',
+                      '先整理「同工名單」（每一項可以排誰，愛餐整理是小組），再按「一鍵安排」把所有服事的空格一起公平地填上（講員不排）。會先預覽，確認後才寫入。',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
@@ -537,7 +553,10 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
             ),
             for (final role in widget.roles) ...[
               const SizedBox(height: 16),
-              Text(role, style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                isGroupRole(role) ? '$role（小組，一個月一組，照這個順序輪）' : role,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -547,7 +566,9 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
                   for (final name in _pool[role]!)
                     InputChip(
                       label: Text(
-                        '$name（${widget.counts[role]?[name] ?? 0}）',
+                        isGroupRole(role)
+                            ? name
+                            : '$name（${widget.counts[role]?[name] ?? 0}）',
                       ),
                       onDeleted: () =>
                           setState(() => _pool[role]!.remove(name)),
@@ -566,9 +587,11 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
                   Expanded(
                     child: TextField(
                       controller: _inputs[role],
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         isDense: true,
-                        hintText: '新增同工（輸入名字後按 Enter）',
+                        hintText: isGroupRole(role)
+                            ? '新增小組（輸入小組名稱後按 Enter）'
+                            : '新增同工（輸入名字後按 Enter）',
                       ),
                       onSubmitted: (_) => _add(role),
                     ),
