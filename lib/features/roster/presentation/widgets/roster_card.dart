@@ -28,7 +28,9 @@ part '_roster_edit_table.dart';
 /// 一律往上丟（見 [RosterProvider.updateRoster]），不會變成整頁的錯誤畫面。
 ///
 /// [ranking] 是選人視窗裡拖過的順序，provider 會先存它再存這一天。
-Future<void> _saveRoster(
+///
+/// 回傳有沒有存成功（排班模式要知道才更新自己那份資料）。
+Future<bool> _saveRoster(
   BuildContext context,
   ServiceRoster roster, {
   StaffRanking? ranking,
@@ -36,8 +38,10 @@ Future<void> _saveRoster(
   final messenger = ScaffoldMessenger.of(context);
   try {
     await context.read<RosterProvider>().updateRoster(roster, ranking: ranking);
+    return true;
   } catch (e) {
     showWriteFailure(messenger, '更新', e);
+    return false;
   }
 }
 

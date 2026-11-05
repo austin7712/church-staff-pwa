@@ -17,6 +17,17 @@ abstract class RosterRepository {
   /// 者無權寫入的聚會別，整批都會被 rules 打回，連他自己那本也補不出來。
   Future<void> ensureQuarterRosters(List<ServiceType> allowedTypes);
 
+  /// 排班模式：讀 [from]～[to]（含）之間的服事表，不受「本季」範圍限制。
+  Future<List<ServiceRoster>> getRostersInRange(DateTime from, DateTime to);
+
+  /// 排班模式：把 [from]～[to] 之間 [types] 缺的週次補成空白服事表
+  /// （照服事項目設定）。已經有的週不動。回傳新建了幾筆。
+  Future<int> ensureRostersInRange(
+    List<ServiceType> types,
+    DateTime from,
+    DateTime to,
+  );
+
   Future<void> updateRoster(ServiceRoster roster);
 
   /// 以單一 batch 寫入多筆服事表：全部成功，或全部不寫。

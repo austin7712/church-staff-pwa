@@ -9,10 +9,15 @@ class RosterEditTable extends StatelessWidget {
     super.key,
     required this.type,
     required this.rosters,
+    this.onSaved,
   });
 
   final ServiceType type;
   final List<ServiceRoster> rosters;
+
+  /// 存成功後通知（排班模式用來更新自己那份資料；一般編輯模式不用，
+  /// provider 會自己更新）。
+  final ValueChanged<ServiceRoster>? onSaved;
 
   static final _dateFormat = DateFormat('M/d (EEEEE)', 'zh_TW');
 
@@ -65,7 +70,7 @@ class RosterEditTable extends StatelessWidget {
               ? const [placeholderPerson]
               : existing.people,
           initialPersonIdsByName: existing?.personIdsByName ?? const {},
-          onSubmit: (selection) {
+          onSubmit: (selection) async {
             final duties = List<RosterEntry>.from(roster.duties);
             if (index >= 0) {
               duties[index] = duties[index].copyWith(
@@ -81,11 +86,13 @@ class RosterEditTable extends StatelessWidget {
                 ),
               );
             }
-            _saveRoster(
+            final updated = roster.copyWith(duties: duties);
+            final ok = await _saveRoster(
               context,
-              roster.copyWith(duties: duties),
+              updated,
               ranking: selection.ranking,
             );
+            if (ok) onSaved?.call(updated);
           },
           submitLabel: '儲存',
           roleEditable: false,

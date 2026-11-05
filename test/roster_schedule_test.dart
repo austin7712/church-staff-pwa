@@ -215,4 +215,34 @@ void main() {
       expect(ChurchTime.parseDate('2028-02-29'), DateTime.utc(2028, 2, 29));
     },
   );
+
+  test('排班模式：可以一次建立 2027 全年的空白週次，已有的週不重複', () {
+    configure(weekday: 7);
+    const type = ServiceType('midweek');
+    final year = planRostersInRange(
+      from: DateTime.utc(2027, 1, 1),
+      to: DateTime.utc(2027, 12, 31),
+      types: ServiceType.values,
+      templates: {
+        type: ['音控', '報告'],
+      },
+      existing: const [],
+    );
+    expect(year, hasLength(52));
+    expect(year.first.date, DateTime.utc(2027, 1, 3));
+    expect(year.last.date, DateTime.utc(2027, 12, 26));
+    expect(year.first.duties.map((d) => d.role), ['音控', '報告']);
+
+    final again = planRostersInRange(
+      from: DateTime.utc(2027, 1, 1),
+      to: DateTime.utc(2027, 12, 31),
+      types: ServiceType.values,
+      templates: {
+        type: ['音控'],
+      },
+      existing: year.take(10),
+    );
+    expect(again, hasLength(42));
+    expect(again.first.date, DateTime.utc(2027, 3, 14));
+  });
 }

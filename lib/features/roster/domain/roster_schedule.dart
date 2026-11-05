@@ -21,13 +21,32 @@ List<ServiceRoster> planQuarterRosters({
   required Iterable<ServiceRoster> existing,
 }) {
   final today = ChurchTime.dateOnly(now);
-  final end = rosterQuarterEnd(today);
+  return planRostersInRange(
+    from: today,
+    to: rosterQuarterEnd(today),
+    types: types,
+    templates: templates,
+    existing: existing,
+  );
+}
+
+/// 排班模式用：[from]～[to]（含）之間每週缺的服事表。規則與
+/// [planQuarterRosters] 相同（同一週已經有了就不補），只是範圍由排班的人選。
+List<ServiceRoster> planRostersInRange({
+  required DateTime from,
+  required DateTime to,
+  required List<ServiceType> types,
+  required Map<ServiceType, List<String>> templates,
+  required Iterable<ServiceRoster> existing,
+}) {
+  final start = ChurchTime.dateOnly(from);
+  final end = ChurchTime.dateOnly(to);
   final occupied = existing.map((r) => _weekKey(r.type, r.date)).toSet();
   final result = <ServiceRoster>[];
   for (final type in types.toSet()) {
     if (!type.enabled) continue;
-    var date = today.add(
-      Duration(days: (type.weekday - today.weekday + 7) % 7),
+    var date = start.add(
+      Duration(days: (type.weekday - start.weekday + 7) % 7),
     );
     while (!date.isAfter(end)) {
       if (occupied.add(_weekKey(type, date))) {

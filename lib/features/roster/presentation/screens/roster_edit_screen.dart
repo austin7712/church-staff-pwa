@@ -22,6 +22,7 @@ import 'event_settings_screen.dart' deferred as event_settings_screen;
 import 'role_settings_screen.dart' deferred as role_settings_screen;
 import '../../domain/roster_import.dart';
 import 'roster_import_summary.dart';
+import 'roster_arranger_screen.dart';
 
 bool get _photoImportAvailable =>
     ChurchConfig.current.features.photoImport && canPickRosterPhotos;
@@ -111,6 +112,15 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
     });
   }
 
+  void _openArranger(BuildContext context, List<ServiceType> types) {
+    if (types.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RosterArrangerScreen(allowedTypes: types),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final allowedTypes = widget.allowedTypes;
@@ -144,6 +154,11 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
               ),
             ),
           ),
+        IconButton(
+          icon: const Icon(Icons.calendar_month_outlined),
+          tooltip: '排班模式（一次排整季、整年）',
+          onPressed: () => _openArranger(context, allowedTypes),
+        ),
         if (isAdmin) ...[
           IconButton(
             icon: const Icon(Icons.palette_outlined),
@@ -337,16 +352,21 @@ class _RosterListState extends State<_RosterList>
     }
 
     final showImport = isEditMode;
+    // 編輯模式最上面兩張卡：排班模式、匯入。
+    final headerCount = showImport ? 2 : 0;
     return ListView.builder(
       key: anchorListKey,
       controller: anchorController,
       padding: const EdgeInsets.only(top: 12, bottom: 20),
-      itemCount: rosters.length + (showImport ? 1 : 0),
+      itemCount: rosters.length + headerCount,
       itemBuilder: (context, index) {
         if (showImport && index == 0) {
+          return _buildArrangerCard(context);
+        }
+        if (showImport && index == 1) {
           return _buildImportCard(context);
         }
-        final rosterIndex = index - (showImport ? 1 : 0);
+        final rosterIndex = index - headerCount;
         final roster = rosters[rosterIndex];
         return ScrollAnchorItem(
           key: ValueKey(roster.id),
@@ -357,6 +377,44 @@ class _RosterListState extends State<_RosterList>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildArrangerCard(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('排班模式', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    '一次排整季或整年（例如下一年度），先建立空白週次，再用表格填人。建議用電腦。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      RosterArrangerScreen(allowedTypes: [widget.type]),
+                ),
+              ),
+              icon: const Icon(Icons.calendar_month_outlined),
+              label: const Text('開啟'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

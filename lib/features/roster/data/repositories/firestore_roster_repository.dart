@@ -108,39 +108,106 @@ class FirestoreRosterRepository implements RosterRepository {
         templates: templates,
         existing: existing,
       );
-      // 每個候選週的七個日期都在 transaction 內讀取，避免兩個使用不同星期
-      // 設定的客戶端同時建表。每批最多 140 個讀取、20 個寫入；先全部讀再寫。
-      for (var start = 0; start < missing.length; start += 20) {
-        final chunk = missing.skip(start).take(20).toList();
-        final weeks = [
-          for (final roster in chunk)
-            rosterWeekDocumentIds(roster.type, roster.date),
-        ];
-        await _firestore.runTransaction((transaction) async {
-          final snapshots = await Future.wait(
-            weeks
-                .expand((ids) => ids)
-                .toSet()
-                .map((id) => transaction.get(_rostersCollection.doc(id))),
-          );
-          final occupiedIds = {
-            for (final snapshot in snapshots)
-              if (snapshot.exists) snapshot.id,
-          };
-          for (var i = 0; i < chunk.length; i++) {
-            if (!weeks[i].any(occupiedIds.contains)) {
-              transaction.set(
-                _rostersCollection.doc(chunk[i].id),
-                rosterToFirestore(chunk[i]),
-              );
-            }
-          }
-        });
-      }
+      await _createMissingRosters(missing);
     } catch (e, st) {
       log('ensureQuarterRosters failed', error: e, stackTrace: st);
       rethrow;
     }
+  }
+
+  /// 把規劃好的空白服事表寫進去。每個候選週的七天都在 transaction 裡讀，
+  /// 同一週已經有（就算是不同星期）就不寫，避免兩台裝置同時建出兩場。
+  Future<void> _createMissingRosters(List<ServiceRoster> missing) async {
+    // 每個候選週的七個日期都在 transaction 內讀取，避免兩個使用不同星期
+    // 設定的客戶端同時建表。每批最多 140 個讀取、20 個寫入；先全部讀再寫。
+    for (var start = 0; start < missing.length; start += 20) {
+      final chunk = missing.skip(start).take(20).toList();
+      final weeks = [
+        for (final roster in chunk)
+          rosterWeekDocumentIds(roster.type, roster.date),
+      ];
+      await _firestore.runTransaction((transaction) async {
+        final snapshots = await Future.wait(
+          weeks
+              .expand((ids) => ids)
+              .toSet()
+              .map((id) => transaction.get(_rostersCollection.doc(id))),
+        );
+        final occupiedIds = {
+          for (final snapshot in snapshots)
+            if (snapshot.exists) snapshot.id,
+        };
+        for (var i = 0; i < chunk.length; i++) {
+          if (!weeks[i].any(occupiedIds.contains)) {
+            transaction.set(
+              _rostersCollection.doc(chunk[i].id),
+              rosterToFirestore(chunk[i]),
+            );
+          }
+        }
+      });
+    }
+  }
+
+  @override
+  Future<List<ServiceRoster>> getRostersInRange(
+    DateTime from,
+    DateTime to,
+  ) async {
+    final start = ChurchTime.dateOnly(from);
+    final end = ChurchTime.dateOnly(to);
+    // 前後多抓一天：存的是教會時區午夜的時間點，換成 UTC 可能落在前一天。
+    final snapshot = await _rostersCollection
+        .where(
+          'date',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(
+            start.subtract(const Duration(days: 1)),
+          ),
+        )
+        .where(
+          'date',
+          isLessThanOrEqualTo: Timestamp.fromDate(
+            end.add(const Duration(days: 2)),
+          ),
+        )
+        .orderBy('date')
+        .get();
+    final rosters = snapshot.docs
+        .map(
+          (doc) =>
+              rosterFromFirestore(doc.data() as Map<String, dynamic>, doc.id),
+        )
+        .where((r) => !r.date.isBefore(start) && !r.date.isAfter(end))
+        .toList();
+    rosters.sort((a, b) {
+      final byDate = a.date.compareTo(b.date);
+      return byDate != 0 ? byDate : a.type.toString().compareTo(b.type.toString());
+    });
+    return rosters;
+  }
+
+  @override
+  Future<int> ensureRostersInRange(
+    List<ServiceType> types,
+    DateTime from,
+    DateTime to,
+  ) async {
+    if (types.isEmpty) return 0;
+    final templates = await getServiceTemplates();
+    // 前後各多看一週：同一週已經有一場（例如改過星期）就不補第二場。
+    final existing = await getRostersInRange(
+      from.subtract(const Duration(days: 7)),
+      to.add(const Duration(days: 7)),
+    );
+    final missing = planRostersInRange(
+      from: from,
+      to: to,
+      types: types,
+      templates: templates,
+      existing: existing,
+    );
+    await _createMissingRosters(missing);
+    return missing.length;
   }
 
   /// 共用的 snapshot → filter → sort 邏輯（供 getUpcomingRosters 與
