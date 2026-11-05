@@ -10,7 +10,11 @@ class RosterEditTable extends StatelessWidget {
     required this.type,
     required this.rosters,
     this.onSaved,
+    this.embedded = false,
   });
+
+  /// 見 [RosterTableView.embedded]。
+  final bool embedded;
 
   final ServiceType type;
   final List<ServiceRoster> rosters;
@@ -30,6 +34,7 @@ class RosterEditTable extends StatelessWidget {
       rosters: rosters,
       alwaysShowRoles: roles,
       showCounts: true,
+      embedded: embedded,
       onCellTap: (row, column) =>
           _editCell(context, row.roster, roleForCell(row, column)),
     );

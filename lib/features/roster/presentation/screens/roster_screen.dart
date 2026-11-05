@@ -151,13 +151,16 @@ class _RosterScreenState extends State<RosterScreen>
       (provider) => provider.isEditMode,
     );
 
-    _updateTabController(allowedTypes.length);
+    // 兩個以上的聚會才需要「總覽」：同一天各聚會放在一起看。
+    final showOverview = allowedTypes.length > 1;
+    _updateTabController(allowedTypes.length + (showOverview ? 1 : 0));
 
     if (isEditMode && _editReady && canEdit) {
       return roster_edit_screen.RosterEditScreen(
         onExit: _exitEditMode,
         tabController: _tabController,
         allowedTypes: allowedTypes,
+        showOverview: showOverview,
         tableMode: _tableMode,
         onTableModeChanged: (value) => setState(() => _tableMode = value),
       );
@@ -210,9 +213,10 @@ class _RosterScreenState extends State<RosterScreen>
             : TabBar(
                 isScrollable: allowedTypes.length > 3,
                 controller: _tabController,
-                tabs: allowedTypes
-                    .map((type) => Tab(text: type.label))
-                    .toList(),
+                tabs: [
+                  if (showOverview) const Tab(text: '總覽'),
+                  ...allowedTypes.map((type) => Tab(text: type.label)),
+                ],
                 indicatorSize: TabBarIndicatorSize.label,
                 splashFactory: NoSplash.splashFactory,
                 overlayColor: const WidgetStatePropertyAll(
@@ -234,7 +238,7 @@ class _RosterScreenState extends State<RosterScreen>
     }
 
     return DefaultTabController(
-      length: allowedTypes.length,
+      length: allowedTypes.length + (showOverview ? 1 : 0),
       child: Scaffold(
         appBar: appBar,
         // 刻意不用 Consumer 包住整個 body：Consumer 會在每一次
@@ -286,14 +290,23 @@ class _RosterScreenState extends State<RosterScreen>
               // 收尾動畫越久，「換完分頁馬上想往下滑卻沒反應」的窗口就越長。
               physics: const SnappyPageScrollPhysics(),
               controller: _tabController,
-              children: allowedTypes.map((type) {
-                return _RosterViewList(
-                  key: PageStorageKey(type.toString()),
-                  type: type,
-                  tableMode: _tableMode,
-                  mineOnly: _mineOnly,
-                );
-              }).toList(),
+              children: [
+                if (showOverview)
+                  _RosterOverviewList(
+                    key: const PageStorageKey('overview'),
+                    types: allowedTypes,
+                    tableMode: _tableMode,
+                    mineOnly: _mineOnly,
+                  ),
+                ...allowedTypes.map((type) {
+                  return _RosterViewList(
+                    key: PageStorageKey(type.toString()),
+                    type: type,
+                    tableMode: _tableMode,
+                    mineOnly: _mineOnly,
+                  );
+                }),
+              ],
             );
           },
         ),
@@ -440,5 +453,134 @@ class _RosterViewListState extends State<_RosterViewList>
     }
 
     return body;
+  }
+}
+
+/// 「總覽」分頁：所有聚會一起看。卡片模式一天一張卡（一個聚會一段），
+/// 表格模式一個聚會一張表疊在一起。
+class _RosterOverviewList extends StatelessWidget {
+  const _RosterOverviewList({
+    super.key,
+    required this.types,
+    required this.tableMode,
+    required this.mineOnly,
+  });
+
+  final List<ServiceType> types;
+  final bool tableMode;
+  final bool mineOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final all = context.select<RosterProvider, List<ServiceRoster>>(
+      (provider) => provider.rosters,
+    );
+    context.select<RosterProvider, int>(
+      (provider) => provider.eventOptionsRevision,
+    );
+    final provider = context.read<RosterProvider>();
+    final roleOrderByType = {
+      for (final type in types) type: provider.templates[type] ?? const <String>[],
+    };
+    final userId = context.select<SessionProvider, String?>(
+      (session) => session.currentUser?.id,
+    );
+    final userName = context.select<SessionProvider, String?>(
+      (session) => session.currentUser?.name,
+    );
+    bool mine(ServiceRoster r) =>
+        rolesForUser(r, userId: userId, userName: userName).isNotEmpty;
+
+    final typeIndex = {for (var i = 0; i < types.length; i++) types[i]: i};
+    final byDate = <DateTime, List<ServiceRoster>>{};
+    for (final r in all) {
+      if (!typeIndex.containsKey(r.type)) continue;
+      final day = DateTime(r.date.year, r.date.month, r.date.day);
+      (byDate[day] ??= []).add(r);
+    }
+    final days = byDate.keys.toList()..sort();
+    for (final list in byDate.values) {
+      list.sort((a, b) => typeIndex[a.type]!.compareTo(typeIndex[b.type]!));
+    }
+    final shownDays = mineOnly
+        ? days.where((d) => byDate[d]!.any(mine)).toList()
+        : days;
+
+    if (shownDays.isEmpty) {
+      return EmptyState(
+        icon: mineOnly
+            ? Icons.event_available_outlined
+            : Icons.event_busy_outlined,
+        message: mineOnly ? '這段期間沒有排到你的服事' : '目前沒有服事資訊',
+      );
+    }
+
+    if (tableMode) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+        children: [
+          for (final type in types) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+              child: Text(
+                type.serviceName,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            _overviewTable(
+              rosters: [
+                for (final d in shownDays)
+                  ...byDate[d]!.where(
+                    (r) => r.type == type && (!mineOnly || mine(r)),
+                  ),
+              ],
+              userId: userId,
+              userName: userName,
+              roleOrder: roleOrderByType[type]!,
+            ),
+          ],
+        ],
+      );
+    }
+
+    final resolveEventColor = provider.eventColorOf;
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 12, bottom: 20),
+      itemCount: shownDays.length,
+      itemBuilder: (context, index) {
+        final day = shownDays[index];
+        return RosterOverviewCard(
+          key: ValueKey('overview-$day'),
+          rosters: byDate[day]!,
+          resolveEventColor: resolveEventColor,
+          initiallyExpanded: index < 2,
+          userId: userId,
+          userName: userName,
+          roleOrderByType: roleOrderByType,
+        );
+      },
+    );
+  }
+
+  Widget _overviewTable({
+    required List<ServiceRoster> rosters,
+    required String? userId,
+    required String? userName,
+    required List<String> roleOrder,
+  }) {
+    final hasPeople = rosters.any((r) => r.duties.any((d) => d.people.isNotEmpty));
+    if (!hasPeople) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Text('尚未排班', style: TextStyle(color: Colors.grey[600])),
+      );
+    }
+    return RosterTableView(
+      rosters: rosters,
+      userId: userId,
+      userName: userName,
+      roleOrder: roleOrder,
+      embedded: true,
+    );
   }
 }

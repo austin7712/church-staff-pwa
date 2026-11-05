@@ -82,6 +82,9 @@ Future<RosterProvider> _pumpRosterScreen(WidgetTester tester) async {
     ),
   );
   await tester.pumpAndSettle();
+  // 第一個分頁是「總覽」；這組測試看的是單一聚會的清單。
+  await tester.tap(find.widgetWithText(Tab, '主日'));
+  await tester.pumpAndSettle();
   return rosters;
 }
 

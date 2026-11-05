@@ -44,7 +44,11 @@ class RosterEditScreen extends StatefulWidget {
     required this.allowedTypes,
     this.tableMode = false,
     this.onTableModeChanged,
+    this.showOverview = false,
   });
+
+  /// 第一個分頁是「總覽」（跟檢視模式一致，兩邊共用同一個 TabController）。
+  final bool showOverview;
 
   @override
   State<RosterEditScreen> createState() => _RosterEditScreenState();
@@ -184,9 +188,10 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
             : TabBar(
                 controller: widget.tabController,
                 isScrollable: allowedTypes.length > 3,
-                tabs: allowedTypes
-                    .map((type) => Tab(text: type.label))
-                    .toList(),
+                tabs: [
+                  if (widget.showOverview) const Tab(text: '總覽'),
+                  ...allowedTypes.map((type) => Tab(text: type.label)),
+                ],
                 indicatorSize: TabBarIndicatorSize.label,
                 // 讓切換時的動畫更平滑
                 splashFactory: NoSplash.splashFactory,
@@ -258,13 +263,24 @@ class _RosterEditScreenState extends State<RosterEditScreen> {
             // 收尾動畫越久，「換完分頁馬上想往下滑卻沒反應」的窗口就越長。
             physics: const SnappyPageScrollPhysics(),
             controller: widget.tabController,
-            children: allowedTypes.map((type) {
-              return _RosterList(
-                key: PageStorageKey(type.toString()),
-                type: type,
-                tableMode: widget.tableMode,
-              );
-            }).toList(),
+            children: [
+              if (widget.showOverview)
+                _OverviewEditor(
+                  key: const PageStorageKey('overview-edit'),
+                  types: allowedTypes,
+                  tableMode: widget.tableMode,
+                  onUseTable: widget.onTableModeChanged == null
+                      ? null
+                      : () => widget.onTableModeChanged!(true),
+                ),
+              ...allowedTypes.map((type) {
+                return _RosterList(
+                  key: PageStorageKey(type.toString()),
+                  type: type,
+                  tableMode: widget.tableMode,
+                );
+              }),
+            ],
           );
         },
       ),
@@ -860,6 +876,61 @@ class _ImportJsonSheetState extends State<_ImportJsonSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 編輯模式的「總覽」：表格模式下各聚會一張可以點的表疊在一起，一次改完；
+/// 卡片模式請到各聚會分頁改（同一天好幾個聚會的卡片疊在一起不好操作）。
+class _OverviewEditor extends StatelessWidget {
+  const _OverviewEditor({
+    super.key,
+    required this.types,
+    required this.tableMode,
+    required this.onUseTable,
+  });
+
+  final List<ServiceType> types;
+  final bool tableMode;
+  final VoidCallback? onUseTable;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!tableMode) {
+      return EmptyState(
+        icon: Icons.table_rows_outlined,
+        message: '總覽請用「表格」編輯',
+        hint: '表格可以一次改所有聚會；要用卡片的話，請到上方各聚會的分頁。',
+        action: onUseTable == null
+            ? null
+            : FilledButton.icon(
+                onPressed: onUseTable,
+                icon: const Icon(Icons.table_rows_outlined),
+                label: const Text('切換到表格'),
+              ),
+      );
+    }
+    final all = context.select<RosterProvider, List<ServiceRoster>>(
+      (provider) => provider.rosters,
+    );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+      children: [
+        for (final type in types) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+            child: Text(
+              type.serviceName,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          RosterEditTable(
+            type: type,
+            rosters: [for (final r in all) if (r.type == type) r],
+            embedded: true,
+          ),
+        ],
+      ],
     );
   }
 }

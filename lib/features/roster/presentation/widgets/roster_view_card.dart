@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../domain/entities/service_roster.dart';
+import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../../domain/roster_view_model.dart';
 import 'duty_row.dart';
 import 'roster_view_colors.dart';
@@ -215,6 +216,206 @@ class _RosterViewCardBody extends StatelessWidget {
           );
         }).toList(),
       ),
+    );
+  }
+}
+
+/// 「總覽」的一天：主日、兒童主日、幼兒主日……同一天的服事放在同一張卡，
+/// 一個聚會一段。
+class RosterOverviewCard extends StatefulWidget {
+  const RosterOverviewCard({
+    super.key,
+    required this.rosters,
+    required this.resolveEventColor,
+    this.initiallyExpanded = false,
+    this.userId,
+    this.userName,
+    this.roleOrderByType = const {},
+  });
+
+  /// 同一天各聚會的服事表，照分頁順序排好。
+  final List<ServiceRoster> rosters;
+  final int Function(ServiceRoster roster, String event) resolveEventColor;
+  final bool initiallyExpanded;
+  final String? userId;
+  final String? userName;
+  final Map<ServiceType, List<String>> roleOrderByType;
+
+  @override
+  State<RosterOverviewCard> createState() => _RosterOverviewCardState();
+}
+
+class _RosterOverviewCardState extends State<RosterOverviewCard> {
+  static final _dateFormat = DateFormat('yyyy/MM/dd (EEEEE)', 'zh_TW');
+
+  late bool _expanded = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final rosters = widget.rosters;
+    final main = rosters.first;
+    final combined = rosters.any(isCombinedService);
+    final events = <(ServiceRoster, String)>[
+      for (final r in rosters)
+        for (final e in r.specialEvents) (r, e),
+    ];
+    final myRoles = <String>[
+      for (final r in rosters)
+        for (final role in rolesForUser(
+          r,
+          userId: widget.userId,
+          userName: widget.userName,
+        ))
+          r == main ? role : '${r.type.label} $role',
+    ];
+    final summary = rosterSummary(main);
+
+    final BorderSide side;
+    if (combined) {
+      side = const BorderSide(color: kRosterCombinedBorder, width: 1.5);
+    } else if (myRoles.isNotEmpty) {
+      side = const BorderSide(color: kRosterMeBorder, width: 1.5);
+    } else {
+      side = BorderSide.none;
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 2.0,
+      color: combined ? kRosterCombinedFill : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: side,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        key: PageStorageKey('overview-${main.id}'),
+        initiallyExpanded: widget.initiallyExpanded,
+        onExpansionChanged: (value) => setState(() => _expanded = value),
+        shape: const Border(),
+        collapsedShape: const Border(),
+        leading: Icon(
+          Icons.event_note,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        title: Text(
+          _dateFormat.format(main.date),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (events.isNotEmpty)
+              Wrap(
+                spacing: 6,
+                runSpacing: 2,
+                children: [
+                  for (final (roster, event) in events)
+                    _EventChip(
+                      label: event,
+                      color: Color(widget.resolveEventColor(roster, event)),
+                    ),
+                ],
+              ),
+            if (!_expanded && summary.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  summary,
+                  style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+                ),
+              ),
+            if (myRoles.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kRosterMeFill,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '你：${myRoles.join('、')}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: kRosterMeText,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        children: [
+          for (final roster in rosters) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: Row(
+                children: [
+                  Text(
+                    roster.displayName,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(child: Divider()),
+                ],
+              ),
+            ),
+            if (roster.duties.every((d) => d.people.isEmpty))
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Text(
+                  '尚未排班',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                ),
+              )
+            else
+              _RosterViewCardBody(
+                roster: roster,
+                myNames: namesForUser(
+                  roster,
+                  userId: widget.userId,
+                  userName: widget.userName,
+                ),
+                roleOrder: widget.roleOrderByType[roster.type] ?? const [],
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EventChip extends StatelessWidget {
+  const _EventChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      label: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      backgroundColor: color.withValues(alpha: 0.12),
+      side: BorderSide(color: color.withValues(alpha: 0.4)),
+      padding: EdgeInsets.zero,
+      labelPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+      visualDensity: const VisualDensity(horizontal: -2, vertical: -3),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 }

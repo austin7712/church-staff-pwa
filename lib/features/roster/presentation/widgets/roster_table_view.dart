@@ -19,7 +19,11 @@ class RosterTableView extends StatelessWidget {
     this.alwaysShowRoles = const [],
     this.showCounts = false,
     this.roleOrder = const [],
+    this.embedded = false,
   });
+
+  /// 放在別的清單裡（總覽一頁疊好幾張表）時不自己捲動。
+  final bool embedded;
 
   final List<ServiceRoster> rosters;
   final String? userId;
@@ -150,10 +154,7 @@ class RosterTableView extends StatelessWidget {
       );
     }
 
-    return ListView(
-      controller: controller,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-      children: [
+    final children = <Widget>[
         Card(
           margin: EdgeInsets.zero,
           elevation: 1,
@@ -186,7 +187,17 @@ class RosterTableView extends StatelessWidget {
             ),
           ),
         if (showCounts) _CountsCard(rosters: rosters),
-      ],
+    ];
+    if (embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      );
+    }
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+      children: children,
     );
   }
 
