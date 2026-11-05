@@ -176,8 +176,19 @@ AutoAssignResult autoAssign({
   required Map<String, Set<String>> eligible,
   List<ServiceRoster> sameDayOthers = const [],
   Set<String> skipRoles = const {kTwSpeakerRole, kMwSpeakerRole},
+  Map<String, List<String>> groupRoles = const {},
 }) {
   final patterns = _learnPatterns(history);
+  final monthGroups = {
+    for (final MapEntry(key: role, value: groups) in groupRoles.entries)
+      if (groups.isNotEmpty)
+        role: monthlyGroupRotation(
+          targets: targets,
+          history: history,
+          role: role,
+          groups: groups,
+        ),
+  };
 
   String dayKey(DateTime d) => '${d.year}-${d.month}-${d.day}';
 
@@ -223,12 +234,37 @@ AutoAssignResult autoAssign({
   final shortfalls = <AutoAssignment>[];
 
   final sorted = [...targets]..sort((a, b) => a.date.compareTo(b.date));
-  for (final roster in sorted) {
+  for (var roster in sorted) {
     final day = dayKey(roster.date);
     final dayBusy = busy.putIfAbsent(day, () => {});
     var changed = false;
     final duties = <RosterEntry>[];
+    final month = _monthKey(roster.date);
+    for (final MapEntry(key: role, value: byMonth) in monthGroups.entries) {
+      if (roster.duties.any((d) => d.role == role)) continue;
+      if (byMonth[month] == null) continue;
+      roster = roster.copyWith(
+        duties: [
+          ...roster.duties,
+          RosterEntry(role: role, people: const [kTbdPlaceholder]),
+        ],
+      );
+    }
     for (final duty in roster.duties) {
+      final byMonth = monthGroups[duty.role];
+      if (byMonth != null) {
+        final group = byMonth[month];
+        if (group == null || !_needsFilling(duty)) {
+          duties.add(duty);
+          continue;
+        }
+        duties.add(duty.copyWith(people: [group], personIdsByName: const {}));
+        changed = true;
+        assignments.add(
+          AutoAssignment(roster: roster, role: duty.role, people: [group]),
+        );
+        continue;
+      }
       if (skipRoles.contains(duty.role) || !_needsFilling(duty)) {
         duties.add(duty);
         continue;
@@ -311,6 +347,64 @@ AutoAssignResult autoAssign({
     assignments: assignments,
     shortfalls: shortfalls,
   );
+}
+
+String _monthKey(DateTime d) => '${d.year}-${d.month}';
+
+/// 以小組為單位的服事：每個月一組，照 [groups] 的順序輪。
+///
+/// 接著歷史上最後一個月的那一組往下輪；這次期間裡某個月已經有人填了
+/// 某一組，那個月就是那一組，後面的月份從它接著輪。回傳 "年-月" → 小組。
+Map<String, String> monthlyGroupRotation({
+  required List<ServiceRoster> targets,
+  required List<ServiceRoster> history,
+  required String role,
+  required List<String> groups,
+}) {
+  String? groupOf(ServiceRoster r) {
+    for (final d in r.duties) {
+      if (d.role != role) continue;
+      for (final p in d.people) {
+        if (groups.contains(p.trim())) return p.trim();
+      }
+    }
+    return null;
+  }
+
+  var index = -1;
+  String? lastMonth;
+  final past = [...history]..sort((a, b) => a.date.compareTo(b.date));
+  for (final r in past) {
+    final g = groupOf(r);
+    if (g == null) continue;
+    index = groups.indexOf(g);
+    lastMonth = _monthKey(r.date);
+  }
+
+  final fixed = <String, String>{};
+  for (final r in targets) {
+    final g = groupOf(r);
+    if (g != null) fixed.putIfAbsent(_monthKey(r.date), () => g);
+  }
+
+  final months = <String>[];
+  final sorted = [...targets]..sort((a, b) => a.date.compareTo(b.date));
+  for (final r in sorted) {
+    final m = _monthKey(r.date);
+    if (!months.contains(m)) months.add(m);
+  }
+
+  final result = <String, String>{};
+  for (final m in months) {
+    final g = fixed[m];
+    if (g != null) {
+      index = groups.indexOf(g);
+    } else if (m != lastMonth || index < 0) {
+      index = (index + 1) % groups.length;
+    }
+    result[m] = groups[index];
+  }
+  return result;
 }
 
 /// 「同工名單」：每項服事可以排哪些人。由安排者維護（加新同工、拿掉不再

@@ -13,6 +13,10 @@ const String kTbdPlaceholder = '待定';
 const String kTwSpeakerRole = '台語講員';
 const String kMwSpeakerRole = '華語講員';
 
+/// 以小組為單位的服事（愛餐整理）：格子裡寫的是小組名稱，不是個人；
+/// 一個月由同一組負責，各組輪流。
+bool isGroupRole(String role) => role.trim().startsWith('愛餐');
+
 /// 不是人名、而是佔位用的字（「台語」「待定」）。
 bool isPlaceholderPerson(String name) {
   final n = name.trim();

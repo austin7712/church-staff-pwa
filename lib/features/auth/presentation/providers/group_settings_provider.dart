@@ -85,3 +85,16 @@ class GroupSettingsProvider extends ChangeNotifier {
     }
   }
 }
+
+/// 所有聚會的小組名稱（不重複，照設定的順序）。以小組為單位的服事
+/// （愛餐整理）從這裡挑。
+List<String> allSmallGroups(GroupSettingsProvider provider) {
+  final result = <String>[];
+  for (final groups in provider.templates.values) {
+    for (final g in groups) {
+      final name = g.trim();
+      if (name.isNotEmpty && !result.contains(name)) result.add(name);
+    }
+  }
+  return result;
+}

@@ -241,4 +241,60 @@ void main() {
       expect(StaffPool.fromJson(null).roles, isEmpty);
     });
   });
+
+  group('愛餐整理：以小組為單位、一個月一組', () {
+    const groups = ['忍耐小組', '喜樂小組', '溫柔小組'];
+    ServiceRoster love(DateTime d, [List<String>? people]) => ServiceRoster(
+      id: '${d.toIso8601String()}_love',
+      date: d,
+      type: ServiceType.sundayService,
+      serviceName: '愛餐整理',
+      duties: [
+        if (people != null) RosterEntry(role: '愛餐整理', people: people),
+      ],
+    );
+    List<ServiceRoster> weeks(int n) => [
+      for (var i = 0; i < n; i++)
+        love(DateTime.utc(2027, 1, 3).add(Duration(days: 7 * i))),
+    ];
+
+    test('同一個月同一組，下個月換下一組；接著歷史輪', () {
+      final result = autoAssign(
+        targets: weeks(14),
+        history: [
+          love(DateTime.utc(2026, 12, 27), ['忍耐小組']),
+        ],
+        eligible: const {},
+        groupRoles: const {'愛餐整理': groups},
+      );
+      final byMonth = <int, Set<String>>{};
+      for (final r in result.updated) {
+        byMonth
+            .putIfAbsent(r.date.month, () => {})
+            .addAll(r.duties.single.people);
+      }
+      expect(byMonth, {
+        1: {'喜樂小組'},
+        2: {'溫柔小組'},
+        3: {'忍耐小組'},
+        4: {'喜樂小組'},
+      });
+    });
+
+    test('已經填好某組的月份照填的，後面接著輪', () {
+      final targets = weeks(9);
+      targets[0] = love(targets[0].date, ['溫柔小組']);
+      final result = autoAssign(
+        targets: targets,
+        history: const [],
+        eligible: const {},
+        groupRoles: const {'愛餐整理': groups},
+      );
+      final months = {
+        for (final r in result.updated)
+          r.date.month: r.duties.single.people.single,
+      };
+      expect(months, {1: '溫柔小組', 2: '忍耐小組', 3: '喜樂小組'});
+    });
+  });
 }

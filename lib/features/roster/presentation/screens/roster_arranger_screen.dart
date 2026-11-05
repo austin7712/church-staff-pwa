@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:church_staff_pwa/core/time/church_time.dart';
 import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../../../../core/utils/error_messages.dart';
+import '../../../auth/presentation/providers/group_settings_provider.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../domain/entities/service_roster.dart';
 import '../../domain/roster_schedule.dart';
@@ -179,7 +180,10 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
     final counts = roleHistoryCounts([...history, ...rosters]);
     final roles = [
       for (final role in provider.templates[_type] ?? const <String>[])
-        if (role != kTwSpeakerRole && role != kMwSpeakerRole) role,
+        if (role != kTwSpeakerRole &&
+            role != kMwSpeakerRole &&
+            !isGroupRole(role))
+          role,
     ];
     final saved = await provider.loadStaffPool(_type);
     return (
@@ -231,7 +235,13 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
       if (!mounted) return;
       final history = data.history;
       final eligible = data.pool.eligible;
-      if (eligible.values.every((people) => people.isEmpty)) {
+      final groups = allSmallGroups(context.read<GroupSettingsProvider>());
+      final groupRoles = {
+        for (final role in provider.templates[_type] ?? const <String>[])
+          if (isGroupRole(role) && groups.isNotEmpty) role: groups,
+      };
+      if (groupRoles.isEmpty &&
+          eligible.values.every((people) => people.isEmpty)) {
         messenger.showSnackBar(
           const SnackBar(content: Text('同工名單是空的：先按「同工名單」填好每一項可以排的人')),
         );
@@ -243,6 +253,7 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         history: history,
         eligible: eligible,
         sameDayOthers: _others,
+        groupRoles: groupRoles,
       );
       if (result.updated.isEmpty) {
         messenger.showSnackBar(

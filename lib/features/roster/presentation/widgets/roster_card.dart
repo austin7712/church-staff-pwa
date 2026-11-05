@@ -8,6 +8,7 @@ import '../../domain/entities/event_option.dart';
 import '../../domain/entities/service_roster.dart';
 import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../../../auth/presentation/providers/user_admin_provider.dart';
+import '../../../auth/presentation/providers/group_settings_provider.dart';
 import '../providers/roster_provider.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/widgets/settings_bottom_sheet.dart';
@@ -473,6 +474,22 @@ Future<_PeopleOptions> _loadSelectablePeopleFor(
   String? role,
 ) async {
   final provider = context.read<RosterProvider>();
+  if (role != null && isGroupRole(role)) {
+    final groups = allSmallGroups(context.read<GroupSettingsProvider>());
+    return _PeopleOptions(
+      options: [
+        placeholderPerson,
+        ...groups,
+        for (final e in extras)
+          if (e.trim().isNotEmpty &&
+              e.trim() != placeholderPerson &&
+              !groups.contains(e.trim()))
+            e.trim(),
+      ],
+      allUserNames: groups.toSet(),
+      userIdsByName: const {},
+    );
+  }
   final staff = StaffDirectory.fromUsers(
     await context.read<UserAdminProvider>().getUsers(),
     rosterType,
