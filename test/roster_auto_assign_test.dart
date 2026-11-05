@@ -316,4 +316,21 @@ void main() {
     ];
     expect(order, ['Ann', 'Ben', 'Ann', 'Ben']);
   });
+
+  test('空白表沒標聖餐：每個月第一個主日排聖餐', () {
+    final history = _history();
+    final result = autoAssign(
+      targets: [for (var i = 0; i < 6; i++) _blank(i)],
+      history: history,
+      eligible: defaultEligible(roleHistoryCounts(history)),
+    );
+    for (final r in result.updated) {
+      final people = r.duties.firstWhere((d) => d.role == '聖餐').people;
+      if (r.date.day <= 7) {
+        expect(people.toSet(), {'C1', 'C2'}, reason: '${r.date}');
+      } else {
+        expect(people, ['待定'], reason: '${r.date}');
+      }
+    }
+  });
 }

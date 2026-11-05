@@ -235,6 +235,7 @@ AutoAssignResult autoAssign({
   final shortfalls = <AutoAssignment>[];
 
   final sorted = [...targets]..sort((a, b) => a.date.compareTo(b.date));
+  final communion = communionWeeks(sorted);
   for (var roster in sorted) {
     final day = dayKey(roster.date);
     final dayBusy = busy.putIfAbsent(day, () => {});
@@ -270,16 +271,20 @@ AutoAssignResult autoAssign({
         duties.add(duty);
         continue;
       }
+      // 還沒標「聖餐」的空白週（例如整年的空白表）：每個月第一個主日當聖餐週。
+      final view = communion.contains(roster.id) && !_hasCommunion(roster)
+          ? roster.copyWith(specialEvents: [...roster.specialEvents, '聖餐'])
+          : roster;
       final stats =
-          patterns[duty.role]?[_patternKey(roster, duty.role)] ??
-          patterns[duty.role]?[_fallbackKey(roster, duty.role)];
+          patterns[duty.role]?[_patternKey(view, duty.role)] ??
+          patterns[duty.role]?[_fallbackKey(view, duty.role)];
       // 沒有歷史可以學（新加的服事，例如兒童主日）：名單上有人就每週排一位；
       // 聖餐類只在聖餐週排。
       final hasPool = (eligible[duty.role] ?? const <String>{}).isNotEmpty;
       final need =
           stats?.decide() ??
           (hasPool &&
-                  (!_isCommunionRole(duty.role) || _hasCommunion(roster))
+                  (!_isCommunionRole(duty.role) || _hasCommunion(view))
               ? const _Need.people(1)
               : null);
       if (need == null || (!need.taiwanese && need.count == 0)) {
@@ -356,6 +361,26 @@ AutoAssignResult autoAssign({
     assignments: assignments,
     shortfalls: shortfalls,
   );
+}
+
+/// 聖餐週：有標「聖餐」的週；一整個月都沒標的話，就用那個月的第一個主日
+/// （教會平常的習慣）。回傳服事表 id。
+Set<String> communionWeeks(List<ServiceRoster> rosters) {
+  final byMonth = <String, List<ServiceRoster>>{};
+  for (final r in rosters) {
+    byMonth.putIfAbsent(_monthKey(r.date), () => []).add(r);
+  }
+  final result = <String>{};
+  for (final month in byMonth.values) {
+    final marked = month.where(_hasCommunion).toList();
+    if (marked.isNotEmpty) {
+      result.addAll(marked.map((r) => r.id));
+    } else {
+      final first = month.reduce((a, b) => a.date.isBefore(b.date) ? a : b);
+      if (first.date.day <= 7) result.add(first.id);
+    }
+  }
+  return result;
 }
 
 String _monthKey(DateTime d) => '${d.year}-${d.month}';
