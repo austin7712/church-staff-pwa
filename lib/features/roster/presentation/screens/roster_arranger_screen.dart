@@ -62,9 +62,18 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
   /// 有設定服事項目的聚會才排（沒有項目的分頁排不了東西）。
   late final List<ServiceType> _types = () {
     final templates = context.read<RosterProvider>().templates;
+    List<String> rolesOf(ServiceType t) => templates[t] ?? const <String>[];
+    // 服事項目已經全部包含在另一個聚會裡的（兒童主日、幼兒主日已併進主日），
+    // 排那一個就好，不另外列出來，免得同一格排兩次。
+    bool coveredByOther(ServiceType t) => widget.allowedTypes.any(
+      (o) =>
+          o != t &&
+          rolesOf(o).length > rolesOf(t).length &&
+          rolesOf(t).every(rolesOf(o).contains),
+    );
     final withRoles = [
       for (final t in widget.allowedTypes)
-        if ((templates[t] ?? const <String>[]).isNotEmpty) t,
+        if (rolesOf(t).isNotEmpty && !coveredByOther(t)) t,
     ];
     return withRoles.isEmpty ? widget.allowedTypes : withRoles;
   }();
@@ -334,7 +343,10 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         if (_types.length == 1)
-          Text('總覽', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            '總覽（全部服事項目）',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         if (_types.length > 1)
           DropdownButton<ServiceType>(
             value: _type,
