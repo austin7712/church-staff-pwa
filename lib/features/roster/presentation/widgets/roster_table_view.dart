@@ -61,7 +61,7 @@ class RosterTableView extends StatelessWidget {
     final muted = Colors.grey[700]!;
 
     final widths = <int, TableColumnWidth>{
-      0: const FixedColumnWidth(42),
+      0: const FixedColumnWidth(48),
       if (model.hasLanes) 1: const FixedColumnWidth(18),
     };
     final firstRoleCol = model.hasLanes ? 2 : 1;
@@ -316,6 +316,7 @@ class _DateCell extends StatelessWidget {
       children: [
         Text(
           '${roster.date.month}/${roster.date.day}',
+          softWrap: false,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
         ),
         if (special != null)
