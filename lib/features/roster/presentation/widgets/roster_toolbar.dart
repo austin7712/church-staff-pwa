@@ -44,7 +44,7 @@ PreferredSizeWidget rosterAppBarBottom({
       mainAxisSize: MainAxisSize.min,
       children: [
         RosterToolbar(children: tools),
-        if (tabs != null) tabs,
+        ?tabs,
       ],
     ),
   );
