@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/time/church_time.dart';
 import '../../../core/types/service_type.dart';
 import '../domain/entities/service_roster.dart';
+import '../domain/role_names.dart';
 
 Map<String, dynamic> rosterToFirestore(ServiceRoster roster) => {
   'date': Timestamp.fromDate(
@@ -56,16 +57,17 @@ ServiceRoster rosterFromFirestore(Map<String, dynamic> data, String id) {
                 ),
           )
         : const {},
-    duties:
-        (data['duties'] as List<dynamic>?)?.map((item) {
+    duties: canonicalDuties(
+      (data['duties'] as List<dynamic>?)?.map((item) {
           final duty = item as Map<String, dynamic>;
           return RosterEntry(
             role: duty['role'] as String,
             people: List<String>.from(duty['people'] ?? []),
             personIdsByName: _personIds(duty['personIdsByName']),
           );
-        }).toList() ??
-        [],
+          }).toList() ??
+          [],
+    ),
   );
 }
 

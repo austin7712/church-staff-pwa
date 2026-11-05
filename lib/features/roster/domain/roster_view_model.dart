@@ -82,7 +82,7 @@ Set<String> namesForUser(
 bool isCombinedService(ServiceRoster roster) =>
     roster.specialEvents.any((e) => e.contains('聯合'));
 
-/// 收起來的卡片上要顯示的重點：講員與敬拜主領。
+/// 收起來的卡片上要顯示的重點：講員與敬拜。
 String rosterSummary(ServiceRoster roster) {
   List<String> peopleOf(String role) => [
     for (final d in roster.duties)
@@ -94,24 +94,18 @@ String rosterSummary(ServiceRoster roster) {
     ...peopleOf(kTwSpeakerRole),
     ...peopleOf(kMwSpeakerRole),
   };
-  final worship = peopleOf('敬拜主領');
+  final worshipRole = roster.duties
+      .map((d) => d.role)
+      .firstWhere((r) => r.startsWith('敬拜'), orElse: () => '');
+  final worship = worshipRole.isEmpty ? const <String>[] : peopleOf(worshipRole);
   return [
     if (speakers.isNotEmpty) '講員 ${speakers.join('・')}',
-    if (worship.isNotEmpty) '敬拜 ${worship.join('、')}',
+    if (worship.isNotEmpty) '$worshipRole ${worship.join('、')}',
   ].join('　｜　');
 }
 
-/// 表格欄標題：欄位窄，長的服事名稱縮成兩個字。
-String shortRoleHeader(String role) {
-  const known = {
-    '敬拜主領': '敬拜',
-    '奉獻點算': '奉獻',
-    '愛餐整潔': '愛餐',
-  };
-  final hit = known[role];
-  if (hit != null) return hit;
-  return role.length > 2 ? role.substring(0, 2) : role;
-}
+/// 表格欄標題：照服事項目設定的名稱，不自己縮寫。
+String shortRoleHeader(String role) => role;
 
 class RosterTableColumn {
   const RosterTableColumn({required this.header, required this.roles});

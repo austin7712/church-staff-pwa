@@ -9,6 +9,7 @@ import '../../domain/staff_order.dart';
 import '../../domain/roster_schedule.dart';
 import '../../domain/roster_auto_assign.dart';
 import '../roster_document.dart';
+import '../../domain/role_names.dart';
 import '../../../../core/time/church_time.dart';
 
 class FirestoreRosterRepository implements RosterRepository {
@@ -297,7 +298,12 @@ class FirestoreRosterRepository implements RosterRepository {
       final data = doc.data() as Map<String, dynamic>;
       return data.map((key, value) {
         final type = ServiceType.fromName(key);
-        return MapEntry(type, List<String>.from(value));
+        final roles = <String>[];
+        for (final role in List<String>.from(value)) {
+          final name = canonicalRole(role);
+          if (!roles.contains(name)) roles.add(name);
+        }
+        return MapEntry(type, roles);
       });
     } catch (e, st) {
       log('Get service templates failed', error: e, stackTrace: st);

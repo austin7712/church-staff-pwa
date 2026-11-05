@@ -58,7 +58,7 @@ void main() {
       RosterEntry(role: kMwSpeakerRole, people: const ['高士超']),
       RosterEntry(role: '敬拜主領', people: const ['Joe', 'Gina']),
     ]);
-    expect(rosterSummary(day), '講員 高士超　｜　敬拜 Joe、Gina');
+    expect(rosterSummary(day), '講員 高士超　｜　敬拜主領 Joe、Gina');
 
     final combined = _day('c', [
       RosterEntry(role: kTwSpeakerRole, people: const ['高士超']),
@@ -88,7 +88,7 @@ void main() {
     test('講員放第一欄，沒人排的服事不出現', () {
       final t = buildRosterTable([normal, combined]);
       expect(t.hasLanes, isTrue);
-      expect(t.columns.map((c) => c.header), ['講員', '音控', '敬拜', '奉獻']);
+      expect(t.columns.map((c) => c.header), ['講員', '音控', '敬拜主領', '奉獻點算']);
     });
 
     test('一般主日分台、華兩行；其他服事都在華行', () {
@@ -147,7 +147,7 @@ void main() {
       final t = buildRosterTable([kids]);
       expect(t.hasLanes, isFalse);
       expect(t.rows.single.lane, isNull);
-      expect(t.columns.single.header, '小組');
+      expect(t.columns.single.header, '小組老師');
     });
   });
 
@@ -175,7 +175,7 @@ void main() {
         alwaysShowRoles: const [kTwSpeakerRole, '敬拜主領', '音控', '愛餐整潔'],
         editing: true,
       );
-      expect(t.columns.map((c) => c.header), ['講員', '敬拜', '音控', '愛餐']);
+      expect(t.columns.map((c) => c.header), ['講員', '敬拜主領', '音控', '愛餐整潔']);
     });
 
     test('編輯時佔位字跟人名一起放在華行', () {
@@ -246,7 +246,7 @@ void main() {
       final t = buildRosterTable([day], roleOrder: order);
       expect(
         t.columns.map((c) => c.header),
-        ['講員', '司會', '敬拜', '音控', '收奉', '小組'],
+        ['講員', '司會報告', '敬拜主領', '音控', '收奉', '小組'],
       );
     });
 
