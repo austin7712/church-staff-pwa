@@ -6,6 +6,7 @@ import '../../domain/entities/event_option.dart';
 import '../../domain/entities/service_roster.dart';
 import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../../domain/repositories/roster_repository.dart';
+import '../../domain/roster_auto_assign.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../domain/staff_directory.dart';
 import '../../domain/roster_import.dart';
@@ -402,6 +403,30 @@ class RosterProvider with ChangeNotifier {
   /// [allowedTypes] 要傳呼叫者「改得動」的聚會別（[User.allowedRosterTypes]），
   /// 不是畫面上顯示的全部：多一個他無權寫的聚會別，整個 batch 都會被 rules 拒。
   /// 背景執行，失敗僅 log，不影響 UI。完成後觸發 fetchInitialData 讓新建的 roster 出現。
+  /// 一鍵安排記住的人選（見 [AutoAssignPicks]）。讀不到就當作沒有調整。
+  Future<AutoAssignPicks> loadAutoAssignPicks(ServiceType type) async {
+    try {
+      return await _repository.getAutoAssignPicks(type);
+    } catch (e, st) {
+      log('讀取一鍵安排人選失敗', error: e, stackTrace: st);
+      return const AutoAssignPicks();
+    }
+  }
+
+  /// 記住這次勾的人選。只有管理員寫得進去；寫不進去就算了（這次照樣安排）。
+  Future<bool> saveAutoAssignPicks(
+    ServiceType type,
+    AutoAssignPicks picks,
+  ) async {
+    try {
+      await _repository.saveAutoAssignPicks(type, picks);
+      return true;
+    } catch (e, st) {
+      log('儲存一鍵安排人選失敗', error: e, stackTrace: st);
+      return false;
+    }
+  }
+
   /// 排班模式：讀任意範圍（例如 2027 全年）的服事表。照同工排序排好，
   /// 跟平常看到的一樣。不放進 [rosters]：那份只裝「本季」，首頁與檢視模式用。
   Future<List<ServiceRoster>> loadRostersInRange(

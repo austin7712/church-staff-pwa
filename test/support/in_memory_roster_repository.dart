@@ -6,6 +6,7 @@ import 'package:church_staff_pwa/features/roster/domain/entities/service_roster.
 import 'package:church_staff_pwa/features/roster/domain/repositories/roster_repository.dart';
 import 'package:church_staff_pwa/features/roster/domain/staff_order.dart';
 import 'package:church_staff_pwa/features/roster/domain/roster_schedule.dart';
+import 'package:church_staff_pwa/features/roster/domain/roster_auto_assign.dart';
 
 /// 測試共用的 [RosterRepository]：資料放在記憶體裡，讀寫照實做。
 ///
@@ -134,6 +135,20 @@ class InMemoryRosterRepository implements RosterRepository {
       _store(roster);
     }
     return missing.length;
+  }
+
+  final Map<ServiceType, AutoAssignPicks> autoAssignPicks = {};
+
+  @override
+  Future<AutoAssignPicks> getAutoAssignPicks(ServiceType type) async =>
+      autoAssignPicks[type] ?? const AutoAssignPicks();
+
+  @override
+  Future<void> saveAutoAssignPicks(
+    ServiceType type,
+    AutoAssignPicks picks,
+  ) async {
+    autoAssignPicks[type] = picks;
   }
 
   @override

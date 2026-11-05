@@ -7,6 +7,7 @@ import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../../domain/repositories/roster_repository.dart';
 import '../../domain/staff_order.dart';
 import '../../domain/roster_schedule.dart';
+import '../../domain/roster_auto_assign.dart';
 import '../roster_document.dart';
 import '../../../../core/time/church_time.dart';
 
@@ -113,6 +114,27 @@ class FirestoreRosterRepository implements RosterRepository {
       log('ensureQuarterRosters failed', error: e, stackTrace: st);
       rethrow;
     }
+  }
+
+  DocumentReference get _autoAssignDoc =>
+      _firestore.collection('settings').doc('auto_assign');
+
+  @override
+  Future<AutoAssignPicks> getAutoAssignPicks(ServiceType type) async {
+    final snapshot = await _autoAssignDoc.get();
+    final data = snapshot.data() as Map<String, dynamic>?;
+    return AutoAssignPicks.fromJson(data?[type.name]);
+  }
+
+  @override
+  Future<void> saveAutoAssignPicks(
+    ServiceType type,
+    AutoAssignPicks picks,
+  ) async {
+    await _autoAssignDoc.set({
+      type.name: picks.toJson(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   /// 把規劃好的空白服事表寫進去。每個候選週的七天都在 transaction 裡讀，

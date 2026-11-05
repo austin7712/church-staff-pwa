@@ -312,3 +312,86 @@ AutoAssignResult autoAssign({
     shortfalls: shortfalls,
   );
 }
+
+/// 安排者在預設名單之外記下的調整（每項服事）。
+class AutoAssignPicks {
+  const AutoAssignPicks({this.include = const {}, this.exclude = const {}});
+
+  /// 額外加入（例如做得少但要排的人）。
+  final Map<String, Set<String>> include;
+
+  /// 從預設名單拿掉（例如已經不服事的人）。
+  final Map<String, Set<String>> exclude;
+
+  /// 套在預設名單上。
+  Map<String, Set<String>> applyTo(Map<String, Set<String>> defaults) {
+    final roles = {...defaults.keys, ...include.keys};
+    return {
+      for (final role in roles)
+        role: {
+          ...?defaults[role],
+          ...?include[role],
+        }.difference(exclude[role] ?? const {}),
+    };
+  }
+
+  /// 從安排者這次勾的結果，算出要記住的調整。
+  factory AutoAssignPicks.diff({
+    required Map<String, Set<String>> defaults,
+    required Map<String, Set<String>> selected,
+  }) {
+    final roles = {...defaults.keys, ...selected.keys};
+    final include = <String, Set<String>>{};
+    final exclude = <String, Set<String>>{};
+    for (final role in roles) {
+      final d = defaults[role] ?? const <String>{};
+      final s = selected[role] ?? const <String>{};
+      final added = s.difference(d);
+      final removed = d.difference(s);
+      if (added.isNotEmpty) include[role] = added;
+      if (removed.isNotEmpty) exclude[role] = removed;
+    }
+    return AutoAssignPicks(include: include, exclude: exclude);
+  }
+
+  /// 存檔時保留 [previous] 裡這次沒列出來的服事項目（例如這次沒歷史可看的項目）。
+  AutoAssignPicks mergedOver(AutoAssignPicks previous, Set<String> roles) {
+    Map<String, Set<String>> merge(
+      Map<String, Set<String>> old,
+      Map<String, Set<String>> now,
+    ) => {
+      for (final e in old.entries)
+        if (!roles.contains(e.key)) e.key: e.value,
+      ...now,
+    };
+    return AutoAssignPicks(
+      include: merge(previous.include, include),
+      exclude: merge(previous.exclude, exclude),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'include': {for (final e in include.entries) e.key: e.value.toList()..sort()},
+    'exclude': {for (final e in exclude.entries) e.key: e.value.toList()..sort()},
+  };
+
+  factory AutoAssignPicks.fromJson(Object? json) {
+    if (json is! Map) return const AutoAssignPicks();
+    Map<String, Set<String>> read(Object? value) {
+      if (value is! Map) return const {};
+      return {
+        for (final e in value.entries)
+          if (e.key is String && e.value is List)
+            e.key as String: {
+              for (final v in e.value as List)
+                if (v is String && v.trim().isNotEmpty) v.trim(),
+            },
+      };
+    }
+
+    return AutoAssignPicks(
+      include: read(json['include']),
+      exclude: read(json['exclude']),
+    );
+  }
+}

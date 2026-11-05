@@ -190,15 +190,38 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         return;
       }
 
+      final defaults = defaultEligible(counts);
+      final saved = await provider.loadAutoAssignPicks(_type);
+      if (!mounted) return;
+      // 之前勾過的人（例如做得少但要排的同工）會自動帶進來。
+      final initial = saved.applyTo(defaults);
+      // 記住的人裡，今年完全沒做過的也要列出來，才看得到、取消得了。
+      for (final MapEntry(key: role, value: people) in saved.include.entries) {
+        if (!roles.contains(role)) continue;
+        final byPerson = counts.putIfAbsent(role, () => {});
+        for (final p in people) {
+          byPerson.putIfAbsent(p, () => 0);
+        }
+      }
+
       final eligible = await showDialog<Map<String, Set<String>>>(
         context: context,
         builder: (_) => _EligibilityDialog(
           roles: roles,
           counts: counts,
-          initial: defaultEligible(counts),
+          initial: initial,
         ),
       );
       if (eligible == null || !mounted) return;
+      // 記住這次的選擇，下次（換電腦也一樣）自動帶入。
+      await provider.saveAutoAssignPicks(
+        _type,
+        AutoAssignPicks.diff(
+          defaults: defaults,
+          selected: eligible,
+        ).mergedOver(saved, roles.toSet()),
+      );
+      if (!mounted) return;
 
       final result = autoAssign(
         targets: rosters,
@@ -454,7 +477,7 @@ class _EligibilityDialogState extends State<_EligibilityDialog> {
           shrinkWrap: true,
           children: [
             const Text(
-              '每一項只會從勾選的人裡挑。預設勾選今年做過 2 次以上的人；數字是今年做過幾次。',
+              '每一項只會從勾選的人裡挑。預設勾選今年做過 2 次以上的人，加上之前特別勾過的人；數字是今年做過幾次。你的選擇會被記住，下次自動帶入。',
               style: TextStyle(fontSize: 13),
             ),
             for (final role in widget.roles) ...[

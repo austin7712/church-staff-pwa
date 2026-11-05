@@ -2,6 +2,7 @@ import '../entities/event_option.dart';
 import '../entities/service_roster.dart';
 import 'package:church_staff_pwa/core/types/service_type.dart';
 import '../staff_order.dart';
+import '../roster_auto_assign.dart';
 
 abstract class RosterRepository {
   Future<List<ServiceRoster>> getUpcomingRosters();
@@ -27,6 +28,13 @@ abstract class RosterRepository {
     DateTime from,
     DateTime to,
   );
+
+  /// 一鍵安排記住的人選：每個聚會、每項服事「額外加入」與「排除」的人，
+  /// 疊在「做過 2 次以上」的預設名單上。存在 settings/auto_assign。
+  Future<AutoAssignPicks> getAutoAssignPicks(ServiceType type);
+
+  /// 只有管理員寫得進去（settings 的規則）；其他人寫不進去時往上丟。
+  Future<void> saveAutoAssignPicks(ServiceType type, AutoAssignPicks picks);
 
   Future<void> updateRoster(ServiceRoster roster);
 
