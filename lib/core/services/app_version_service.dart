@@ -4,7 +4,26 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 class AppVersionInfo {
-  const AppVersionInfo({required this.generatedAt, this.release, this.channel});
+  const AppVersionInfo({
+    required this.generatedAt,
+    this.release,
+    this.channel,
+    this.buildNumber,
+    this.branch,
+  });
+
+  /// GitHub Actions 的部署編號（每次部署 +1），給人對照「現在是第幾版」。
+  final String? buildNumber;
+
+  /// 部署的分支：dev 是預覽站。
+  final String? branch;
+
+  /// 個人頁顯示的版本號，例如「v42」；預覽站加註。
+  String? get label {
+    final n = buildNumber;
+    if (n == null || n.isEmpty) return null;
+    return branch == 'dev' ? 'v$n（預覽站）' : 'v$n';
+  }
 
   final DateTime generatedAt;
 
@@ -56,6 +75,10 @@ class AppVersionService {
           generatedAt: generatedAt.toLocal(),
           release: data['release'] is String ? data['release'] as String : null,
           channel: data['channel'] is String ? data['channel'] as String : null,
+          buildNumber: data['build_number'] is String
+              ? data['build_number'] as String
+              : null,
+          branch: data['branch'] is String ? data['branch'] as String : null,
         );
       } catch (_) {
         continue;
