@@ -488,4 +488,84 @@ void main() {
       ]);
     });
   });
+
+  test('兼很多項的人，總次數不會比只做一項的人高出一大截', () {
+    // Multi 在四個項目的名單上，其他人各只在一項。
+    final targets = [
+      for (var i = 0; i < 12; i++)
+        _week(DateTime.utc(2027, 1, 3).add(Duration(days: 7 * i)), {
+          'A': ['待定'],
+          'B': ['待定'],
+          'C': ['待定'],
+          'D': ['待定'],
+        }),
+    ];
+    final result = autoAssign(
+      targets: targets,
+      history: const [],
+      eligible: const {
+        'A': {'Multi', 'a1', 'a2'},
+        'B': {'Multi', 'b1', 'b2'},
+        'C': {'Multi', 'c1', 'c2'},
+        'D': {'Multi', 'd1', 'd2'},
+      },
+      // 不同項目在測試裡可以同一天，才看得出總量。
+      skipRoles: const {},
+    );
+    final totals = <String, int>{};
+    for (final r in result.updated) {
+      for (final d in r.duties) {
+        for (final p in d.people) {
+          totals[p] = (totals[p] ?? 0) + 1;
+        }
+      }
+    }
+    final others = [
+      for (final e in totals.entries)
+        if (e.key != 'Multi') e.value,
+    ];
+    final maxOther = others.reduce((a, b) => a > b ? a : b);
+    expect(totals['Multi'] ?? 0, lessThanOrEqualTo(maxOther + 1), reason: '$totals');
+  });
+
+  test('服事比例 50%：大約只排別人的一半', () {
+    final result = autoAssign(
+      targets: [
+        for (var i = 0; i < 12; i++)
+          _week(DateTime.utc(2027, 1, 3).add(Duration(days: 7 * i)), {
+            '兒童主日': ['待定'],
+          }),
+      ],
+      history: const [],
+      eligible: const {
+        '兒童主日': {'Vivian', 'Daniel', 'Jasmine'},
+      },
+      ratios: const {
+        '兒童主日': {'Daniel': 0.5},
+      },
+    );
+    final counts = <String, int>{};
+    for (final r in result.updated) {
+      final p = r.duties.single.people.single;
+      counts[p] = (counts[p] ?? 0) + 1;
+    }
+    expect(counts['Daniel'], inInclusiveRange(2, 3), reason: '$counts');
+    expect(counts['Vivian'], inInclusiveRange(4, 5), reason: '$counts');
+  });
+
+  test('服事比例存檔讀回一樣；100% 不存', () {
+    const pool = StaffPool(
+      {
+        '兒童主日': ['Daniel', 'Vivian'],
+      },
+      [],
+      {
+        '兒童主日': {'Daniel': 0.5, 'Vivian': 1.0},
+      },
+    );
+    final back = StaffPool.fromJson(pool.toJson());
+    expect(back.ratioOf('兒童主日', 'Daniel'), 0.5);
+    expect(back.ratioOf('兒童主日', 'Vivian'), 1.0);
+    expect(back.ratios['兒童主日']!.containsKey('Vivian'), isFalse);
+  });
 }

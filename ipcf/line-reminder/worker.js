@@ -7,7 +7,8 @@
 //      也支援「解除綁定」、「我的服事」、「說明」。回覆訊息不計入 LINE 免費額度。
 //   2. 排程（Cron）：每週三、週六晚上 8 點（教會時區）讀 Firestore 服事表，
 //      只私訊接下來 4 天內有服事的人。
-//   3. 管理用網址（加 ?key=ADMIN_KEY）：/admin/preview 預覽會發給誰（不發送）、/admin/run 立即發送。
+//   3. 管理用網址（加 ?key=ADMIN_KEY）：/admin/preview 預覽會發給誰（不發送）、/admin/run 立即發送、
+//      /admin/richmenu 建立下方圖文選單（我的服事／本週服事表／使用說明／開啟同工 App）。
 //
 // 需要的設定（Cloudflare Worker → Settings）：
 //   KV 綁定        BINDINGS
@@ -29,6 +30,10 @@ export default {
     try {
       if (request.method === 'POST' && url.pathname === '/line/webhook') {
         return await handleWebhook(request, env, ctx);
+      }
+      if (url.pathname === '/admin/richmenu') {
+        if (!isAdmin(request, env)) return new Response('Unauthorized', { status: 401 });
+        return json(await setupRichMenu(env, url.searchParams.get('image') || RICH_MENU_IMAGE));
       }
       if (url.pathname === '/admin/preview' || url.pathname === '/admin/run') {
         if (!isAdmin(request, env)) return new Response('Unauthorized', { status: 401 });
@@ -434,17 +439,93 @@ export async function verifySignature(body, signature, secret) {
 }
 
 const HELP = [
-  '這是 IPCF 同工服事提醒 🙌',
+  '🙌 歡迎使用 IPCF 服事小幫手！',
   '',
-  '請傳「綁定 你的名字」，名字要跟服事表上的寫法一樣，例如：',
+  '【第一步：綁定名字】',
+  '傳「綁定 你的名字」，名字要跟服事表上的寫法一樣（大小寫不拘），例如：',
   '綁定 Crispin',
+  '負責愛餐整理的小組也可以綁：綁定 喜樂小組',
+  '一個 LINE 可以綁好幾個名字（例如夫妻共用）。',
   '',
-  '綁定後，每週三、週六晚上 8 點，若接下來幾天有你的服事，就會私訊提醒你。',
+  '【之後會收到】',
+  '每週三、週六晚上 8 點，若接下來幾天有你的服事，會私訊提醒你，並列出當天一起服事的同工。',
   '',
-  '其他指令：',
-  '・我的服事：查看接下來 4 週的服事',
+  '【其他指令】（也可以按下方選單）',
+  '・我的服事：接下來 4 週的服事',
+  '・本週服事表：這週所有同工',
   '・解除綁定：停止提醒',
+  '・說明：再看一次這段說明',
+  '',
+  '如果無法服事，請盡早告知同工協調。',
 ].join('\n');
+
+// 下方圖文選單用的圖片（2500×843），放在 GitHub 上讓 Worker 抓。
+const RICH_MENU_IMAGE =
+  'https://raw.githubusercontent.com/austin7712/church-staff-pwa/dev/ipcf/line-reminder/richmenu.png';
+
+/** 建立下方的圖文選單並設成預設（舊的預設選單會一併刪掉）。 */
+async function setupRichMenu(env, imageUrl, fetchImpl = fetch) {
+  const auth = { authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` };
+  const site = env.SITE_URL || 'https://ipcf-church-staff.pages.dev';
+  const W = 2500;
+  const H = 843;
+  const cell = W / 4;
+  const actions = [
+    { type: 'message', label: '我的服事', text: '我的服事' },
+    { type: 'message', label: '本週服事表', text: '本週服事表' },
+    { type: 'message', label: '使用說明', text: '說明' },
+    { type: 'uri', label: '開啟同工 App', uri: `${site}/?openExternalBrowser=1` },
+  ];
+  const menu = {
+    size: { width: W, height: H },
+    selected: true,
+    name: 'IPCF 服事小幫手',
+    chatBarText: '服事選單',
+    areas: actions.map((action, i) => ({
+      bounds: { x: Math.round(i * cell), y: 0, width: Math.round(cell), height: H },
+      action,
+    })),
+  };
+  const created = await fetchImpl('https://api.line.me/v2/bot/richmenu', {
+    method: 'POST',
+    headers: { ...auth, 'content-type': 'application/json' },
+    body: JSON.stringify(menu),
+  });
+  if (!created.ok) return { step: 'create', status: created.status, body: await created.text() };
+  const { richMenuId } = await created.json();
+
+  const img = await fetchImpl(imageUrl);
+  if (!img.ok) return { step: 'image', status: img.status };
+  const up = await fetchImpl(`https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`, {
+    method: 'POST',
+    headers: { ...auth, 'content-type': 'image/png' },
+    body: await img.arrayBuffer(),
+  });
+  if (!up.ok) return { step: 'upload', status: up.status, body: await up.text() };
+
+  const old = await fetchImpl('https://api.line.me/v2/bot/user/all/richmenu', { headers: auth });
+  const oldId = old.ok ? (await old.json()).richMenuId : null;
+  const def = await fetchImpl(`https://api.line.me/v2/bot/user/all/richmenu/${richMenuId}`, { method: 'POST', headers: auth });
+  if (!def.ok) return { step: 'default', status: def.status, body: await def.text() };
+  if (oldId && oldId !== richMenuId) {
+    await fetchImpl(`https://api.line.me/v2/bot/richmenu/${oldId}`, { method: 'DELETE', headers: auth });
+  }
+  return { ok: true, richMenuId, replaced: oldId || null };
+}
+
+/** 「本週服事表」：最近一個有服事表的聚會日，每個聚會列出全部同工。 */
+export function weekRosterMessage(rosters, todayKey) {
+  const dates = [...new Set(rosters.map((r) => r.dateKey))].sort();
+  const day = dates.find((d) => d >= todayKey);
+  if (!day) return '這週還沒有服事表。';
+  const lines = [`📋 ${describeDate(day, todayKey)}服事表`];
+  for (const r of rosters.filter((x) => x.dateKey === day)) {
+    const team = teamLines(r.duties, []);
+    if (!team.length) continue;
+    lines.push('', `【${r.serviceName}】`, ...team);
+  }
+  return lines.length > 1 ? lines.join('\n') : `${describeDate(day, todayKey)}還沒有排人。`;
+}
 
 async function handleWebhook(request, env, ctx, fetchImpl = fetch) {
   const body = await request.text();
@@ -487,6 +568,11 @@ export async function handleEvent(env, event, fetchImpl = fetch) {
     return lineReply(env, event.replyToken, names.length ? `已解除綁定：${names.join('、')}，之後不會再收到提醒。` : '你目前沒有綁定任何名字。', fetchImpl);
   }
 
+  if (text === '本週服事表' || text === '本週服事' || text === '這週服事表') {
+    const rosters = await fetchRosters(env, today, addDays(today, 7), fetchImpl);
+    return lineReply(env, event.replyToken, weekRosterMessage(rosters, today), fetchImpl);
+  }
+
   if (text === '我的服事') {
     const names = await getList(env.BINDINGS, `user:${uid}`);
     if (!names.length) return lineReply(env, event.replyToken, '你還沒有綁定名字，請先傳「綁定 你的名字」。', fetchImpl);
@@ -506,7 +592,8 @@ function isAdmin(request, env) {
   // 可用 Authorization: Bearer <ADMIN_KEY>，或在瀏覽器網址加 ?key=<ADMIN_KEY>
   const auth = request.headers.get('authorization') || '';
   const key = new URL(request.url).searchParams.get('key') || '';
-  return Boolean(env.ADMIN_KEY) && (auth === `Bearer ${env.ADMIN_KEY}` || key === env.ADMIN_KEY);
+  const keys = [env.ADMIN_KEY, env.SETUP_KEY].filter(Boolean);
+  return keys.some((k) => auth === `Bearer ${k}` || key === k);
 }
 
 function json(data) {

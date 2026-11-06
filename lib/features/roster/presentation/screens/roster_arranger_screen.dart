@@ -213,7 +213,7 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
           role: isGroupRole(role) && saved.roles[role] == null
               ? groups
               : people,
-      }, saved.families),
+      }, saved.families, saved.ratios),
     );
   }
 
@@ -281,6 +281,7 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         // 幼兒主日的老師一次連兩週。
         consecutiveWeeks: const {'幼兒主日': 2},
         families: data.pool.families,
+        ratios: data.pool.ratios,
       );
       if (result.updated.isEmpty) {
         messenger.showSnackBar(
@@ -601,6 +602,33 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
     for (final role in widget.roles)
       role: [...?widget.pool.roles[role]],
   };
+  late final Map<String, Map<String, double>> _ratios = {
+    for (final MapEntry(key: role, value: byPerson)
+        in widget.pool.ratios.entries)
+      role: {...byPerson},
+  };
+
+  static const _ratioSteps = [1.0, 0.75, 0.5, 0.25];
+
+  /// 點一下名字換下一個比例：100% → 75% → 50% → 25% → 100%。
+  void _cycleRatio(String role, String name) {
+    final current = _ratios[role]?[name] ?? 1.0;
+    final i = _ratioSteps.indexWhere((r) => (r - current).abs() < 0.01);
+    final next = _ratioSteps[(i + 1) % _ratioSteps.length];
+    setState(() {
+      final byPerson = _ratios.putIfAbsent(role, () => {});
+      if (next == 1.0) {
+        byPerson.remove(name);
+      } else {
+        byPerson[name] = next;
+      }
+    });
+  }
+
+  String _ratioLabel(String role, String name) {
+    final r = _ratios[role]?[name] ?? 1.0;
+    return r == 1.0 ? '' : ' ${(r * 100).round()}%';
+  }
   late final Map<String, TextEditingController> _inputs = {
     for (final role in widget.roles) role: TextEditingController(),
   };
@@ -652,7 +680,7 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
           children: [
             const Text(
               '一鍵安排只會從這裡的名單挑人，不會跨到別的服事。可以加新同工、按 ✕ 拿掉不再服事的人。'
-              '括號裡是今年做過幾次。名字要跟服事表上的寫法一樣。',
+              '括號裡是今年做過幾次。點一下名字可以調整服事比例（例如 50% 就是大約只排別人的一半）。名字要跟服事表上的寫法一樣。',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 16),
@@ -714,8 +742,15 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
                       label: Text(
                         isGroupRole(role)
                             ? name
-                            : '$name（${widget.counts[role]?[name] ?? 0}）',
+                            : '$name（${widget.counts[role]?[name] ?? 0}）'
+                                  '${_ratioLabel(role, name)}',
                       ),
+                      selected: (_ratios[role]?[name] ?? 1.0) < 1.0,
+                      showCheckmark: false,
+                      tooltip: '點一下調整服事比例（100% → 75% → 50% → 25%）',
+                      onPressed: isGroupRole(role)
+                          ? null
+                          : () => _cycleRatio(role, name),
                       onDeleted: () =>
                           setState(() => _pool[role]!.remove(name)),
                       deleteButtonTooltipMessage: '從名單拿掉',
@@ -760,7 +795,7 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
         ),
         FilledButton(
           onPressed: () =>
-              Navigator.pop(context, StaffPool(_pool, _families)),
+              Navigator.pop(context, StaffPool(_pool, _families, _ratios)),
           child: const Text('儲存名單'),
         ),
       ],
