@@ -295,7 +295,7 @@ export function assignmentsByName(rosters) {
         if (!map.has(n)) map.set(n, { display: person.trim(), items: new Map() });
         const entry = map.get(n);
         const k = `${roster.dateKey}|${roster.serviceName}`;
-        if (!entry.items.has(k)) entry.items.set(k, { dateKey: roster.dateKey, serviceName: roster.serviceName, roles: [] });
+        if (!entry.items.has(k)) entry.items.set(k, { dateKey: roster.dateKey, serviceName: roster.serviceName, roles: [], team: roster.duties });
         const roles = entry.items.get(k).roles;
         if (!roles.includes(duty.role)) roles.push(duty.role);
       }
@@ -304,11 +304,35 @@ export function assignmentsByName(rosters) {
   return map;
 }
 
-export function buildMessage(displayName, items, todayKey) {
+// 跟 app 的服事項目設定同一個順序（講員 → 司會報告 → … → 愛餐整理）
+const ROLE_ORDER = ['台語講員', '華語講員', '司會報告', '敬拜讚美', '音控', '奉獻點算', '聖餐長老', '兒童主日', '幼兒主日', '愛餐整理'];
+
+/** 當天一起服事的同工：每一項服事一行，自己的名字後面標（你）。 */
+export function teamLines(team, myNames) {
+  const mine = new Set(myNames.map(normalizeName));
+  const order = (r) => {
+    const i = ROLE_ORDER.indexOf(r);
+    return i < 0 ? ROLE_ORDER.length : i;
+  };
+  const lines = [];
+  for (const duty of [...(team || [])].sort((a, b) => order(a.role) - order(b.role))) {
+    const people = duty.people.map((p) => String(p || '').trim()).filter(Boolean);
+    const shown = people
+      .map((p) => (normalizeName(p) === '台語' ? '台語堂' : isRealPerson(p) ? (mine.has(normalizeName(p)) ? `${p}（你）` : p) : null))
+      .filter(Boolean);
+    if (!shown.length) continue;
+    lines.push(`　${duty.role}：${[...new Set(shown)].join('、')}`);
+  }
+  return lines;
+}
+
+export function buildMessage(displayName, items, todayKey, myNames = [displayName]) {
   const lines = [`🙏 ${displayName} 平安！提醒你接下來的服事：`];
   for (const it of [...items].sort((a, b) => a.dateKey.localeCompare(b.dateKey))) {
     lines.push('', `📅 ${describeDate(it.dateKey, todayKey)}${it.serviceName}`);
-    for (const r of it.roles) lines.push(`・${r}`);
+    lines.push(`你的服事：${it.roles.join('、')}`);
+    const team = teamLines(it.team, myNames);
+    if (team.length) lines.push('當天同工：', ...team);
   }
   lines.push('', '如果無法服事，請盡早告知同工協調，謝謝！');
   return lines.join('\n');
@@ -356,7 +380,7 @@ export async function runReminders(env, { send, now, force = false }, fetchImpl 
       if (!merged.has(k)) merged.set(k, { ...it, roles: [] });
       for (const r of it.roles) if (!merged.get(k).roles.includes(r)) merged.get(k).roles.push(r);
     }
-    const text = buildMessage(u.names.join('／'), merged.values(), local.dateKey);
+    const text = buildMessage(u.names.join('／'), merged.values(), local.dateKey, u.names);
     let status = 'preview';
     if (send) {
       const res = await linePush(env, uid, text, fetchImpl);
@@ -470,7 +494,7 @@ export async function handleEvent(env, event, fetchImpl = fetch) {
     const byName = assignmentsByName(rosters);
     const items = names.flatMap((n) => [...(byName.get(normalizeName(n))?.items.values() || [])]);
     if (!items.length) return lineReply(env, event.replyToken, `${names.join('／')}：接下來 4 週沒有排到服事 🙂`, fetchImpl);
-    return lineReply(env, event.replyToken, buildMessage(names.join('／'), items, today).replace('提醒你接下來的服事', '你接下來 4 週的服事'), fetchImpl);
+    return lineReply(env, event.replyToken, buildMessage(names.join('／'), items, today, names).replace('提醒你接下來的服事', '你接下來 4 週的服事'), fetchImpl);
   }
 
   return lineReply(env, event.replyToken, HELP, fetchImpl);
