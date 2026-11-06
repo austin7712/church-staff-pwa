@@ -432,7 +432,12 @@ AutoAssignResult autoAssign({
           cur.people.every(candidates.contains);
       final picked = keep
           ? List<String>.from(cur.people)
-          : candidates.take(need.count).toList();
+          : _pickAvoidingFamily(
+              candidates,
+              need.count,
+              avoid: kNoFamilyPairRoles.contains(canonicalRole(duty.role)),
+              familyOf: familyOf,
+            );
       if (weeks > 1 && picked.isNotEmpty) {
         streak[duty.role] = keep
             ? (people: picked, left: cur.left - 1)
@@ -492,6 +497,32 @@ Set<String> communionWeeks(List<ServiceRoster> rosters) {
 
 /// 盡量排當天已經有服事的人的項目（奉獻點算：聚會後留下來點就好）。
 const Set<String> kPreferPresentRoles = {'奉獻點算'};
+
+/// 同一格不要排同一家人的項目（奉獻點算：兩位點算的人互相核對，不要是夫妻）。
+const Set<String> kNoFamilyPairRoles = {'奉獻點算'};
+
+/// 照順序挑 [count] 個人；[avoid] 時跳過跟已經挑到的人同一家的，
+/// 真的湊不滿才回頭補。
+List<String> _pickAvoidingFamily(
+  List<String> candidates,
+  int count, {
+  required bool avoid,
+  required Map<String, Set<String>> familyOf,
+}) {
+  if (!avoid) return candidates.take(count).toList();
+  final picked = <String>[];
+  for (final p in candidates) {
+    if (picked.length >= count) break;
+    final fam = familyOf[p.toLowerCase()] ?? const <String>{};
+    if (picked.any((q) => fam.contains(q.toLowerCase()))) continue;
+    picked.add(p);
+  }
+  for (final p in candidates) {
+    if (picked.length >= count) break;
+    if (!picked.contains(p)) picked.add(p);
+  }
+  return picked;
+}
 
 String _monthKey(DateTime d) => '${d.year}-${d.month}';
 

@@ -586,4 +586,28 @@ void main() {
     expect(duties.map((d) => d.role), ['奉獻點算', '音控']);
     expect(duties.first.people, ['Kevin'], reason: 'Kevin 當天本來就在');
   });
+
+  test('奉獻點算兩個人盡量不要是夫妻', () {
+    final result = autoAssign(
+      targets: [
+        _week(DateTime.utc(2027, 1, 3), {
+          '奉獻點算': ['待定', '待定'],
+        }),
+      ],
+      history: [
+        _week(DateTime.utc(2026, 12, 27), {
+          '奉獻點算': ['X', 'Y'],
+        }),
+      ],
+      eligible: const {
+        '奉獻點算': {'Kevin', 'Grace', 'Ann'},
+      },
+      families: const [
+        ['Kevin', 'Grace'],
+      ],
+    );
+    final people = result.updated.single.duties.single.people;
+    expect(people, hasLength(2));
+    expect(people.toSet().containsAll({'Kevin', 'Grace'}), isFalse, reason: '$people');
+  });
 }
