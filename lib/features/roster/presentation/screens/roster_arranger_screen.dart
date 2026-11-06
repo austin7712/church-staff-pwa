@@ -213,7 +213,7 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
           role: isGroupRole(role) && saved.roles[role] == null
               ? groups
               : people,
-      }),
+      }, saved.families),
     );
   }
 
@@ -278,6 +278,9 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         sameDayOthers: _others,
         groupRoles: groupRoles,
         templateRoles: data.roles,
+        // 幼兒主日的老師一次連兩週。
+        consecutiveWeeks: const {'幼兒主日': 2},
+        families: data.pool.families,
       );
       if (result.updated.isEmpty) {
         messenger.showSnackBar(
@@ -601,12 +604,31 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
   late final Map<String, TextEditingController> _inputs = {
     for (final role in widget.roles) role: TextEditingController(),
   };
+  late final List<List<String>> _families = [
+    for (final f in widget.pool.families) [...f],
+  ];
+  final _familyInput = TextEditingController();
+
+  void _addFamily() {
+    final members = _familyInput.text
+        .split(RegExp(r'[、,，&＆/／+＋]'))
+        .map((m) => m.trim())
+        .where((m) => m.isNotEmpty)
+        .toSet()
+        .toList();
+    if (members.length < 2) return;
+    setState(() {
+      _families.add(members);
+      _familyInput.clear();
+    });
+  }
 
   @override
   void dispose() {
     for (final c in _inputs.values) {
       c.dispose();
     }
+    _familyInput.dispose();
     super.dispose();
   }
 
@@ -632,6 +654,48 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
               '一鍵安排只會從這裡的名單挑人，不會跨到別的服事。可以加新同工、按 ✕ 拿掉不再服事的人。'
               '括號裡是今年做過幾次。名字要跟服事表上的寫法一樣。',
               style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '家人（一起出席、一起缺席，盡量排同一天）',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final f in _families)
+                  InputChip(
+                    label: Text(f.join(' ＆ ')),
+                    onDeleted: () => setState(() => _families.remove(f)),
+                    deleteButtonTooltipMessage: '拿掉',
+                  ),
+                if (_families.isEmpty)
+                  Text(
+                    '還沒有',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _familyInput,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      hintText: '新增一家人，例如「Kevin、Grace」後按 Enter',
+                    ),
+                    onSubmitted: (_) => _addFamily(),
+                  ),
+                ),
+                IconButton(
+                  tooltip: '新增',
+                  icon: const Icon(Icons.family_restroom_outlined),
+                  onPressed: _addFamily,
+                ),
+              ],
             ),
             for (final role in widget.roles) ...[
               const SizedBox(height: 16),
@@ -695,7 +759,8 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
           child: const Text('取消'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, StaffPool(_pool)),
+          onPressed: () =>
+              Navigator.pop(context, StaffPool(_pool, _families)),
           child: const Text('儲存名單'),
         ),
       ],

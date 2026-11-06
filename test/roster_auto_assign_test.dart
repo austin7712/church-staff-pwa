@@ -398,4 +398,94 @@ void main() {
     expect(duties[1].people, ['待定']);
     expect(duties[2].people, ['待定']);
   });
+
+  test('幼兒主日老師連兩週，再換下一位', () {
+    final result = autoAssign(
+      targets: [
+        for (var i = 0; i < 6; i++)
+          _week(DateTime.utc(2027, 1, 3).add(Duration(days: 7 * i)), {
+            '幼兒主日': ['待定'],
+          }),
+      ],
+      history: const [],
+      eligible: const {
+        '幼兒主日': {'Jeili', 'Tiyu', 'Paulina'},
+      },
+      consecutiveWeeks: const {'幼兒主日': 2},
+    );
+    final order = [
+      for (final r in result.updated) r.duties.single.people.single,
+    ];
+    expect(order[0], order[1]);
+    expect(order[2], order[3]);
+    expect(order[4], order[5]);
+    expect({order[0], order[2], order[4]}, hasLength(3), reason: '$order');
+  });
+
+  group('公平與家人', () {
+    test('次數相同時，總次數（所有項目加起來）少的先排', () {
+      final result = autoAssign(
+        targets: [
+          _week(DateTime.utc(2027, 1, 3), {
+            '音控': ['Busy'],
+            '敬拜讚美': ['待定'],
+          }),
+        ],
+        history: const [],
+        eligible: const {
+          '敬拜讚美': {'Busy', 'Free'},
+        },
+      );
+      // Busy 同一天已經有音控，本來就不能排；換一週看總次數。
+      final r2 = autoAssign(
+        targets: [
+          _week(DateTime.utc(2027, 1, 3), {
+            '音控': ['Busy'],
+          }),
+          _week(DateTime.utc(2027, 1, 10), {
+            '敬拜讚美': ['待定'],
+          }),
+        ],
+        history: const [],
+        eligible: const {
+          '敬拜讚美': {'Busy', 'Free'},
+        },
+      );
+      expect(result.updated.single.duties.last.people, ['Free']);
+      expect(r2.updated.single.duties.single.people, ['Free']);
+    });
+
+    test('家人盡量排同一天', () {
+      final result = autoAssign(
+        targets: [
+          _week(DateTime.utc(2027, 1, 3), {
+            '音控': ['Kevin'],
+            '敬拜讚美': ['待定'],
+          }),
+        ],
+        history: const [],
+        eligible: const {
+          '敬拜讚美': {'Ann', 'Grace'},
+        },
+        families: const [
+          ['Kevin', 'Grace'],
+        ],
+      );
+      expect(result.updated.single.duties.last.people, ['Grace']);
+    });
+
+    test('家人存檔讀回一樣', () {
+      const pool = StaffPool(
+        {
+          '音控': ['Kevin'],
+        },
+        [
+          ['Kevin', 'Grace'],
+        ],
+      );
+      expect(StaffPool.fromJson(pool.toJson()).families, [
+        ['Kevin', 'Grace'],
+      ]);
+    });
+  });
 }
