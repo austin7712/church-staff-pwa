@@ -278,6 +278,8 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         sameDayOthers: _others,
         groupRoles: groupRoles,
         templateRoles: data.roles,
+        // 幼兒主日的老師一次連兩週。
+        consecutiveWeeks: const {'幼兒主日': 2},
       );
       if (result.updated.isEmpty) {
         messenger.showSnackBar(

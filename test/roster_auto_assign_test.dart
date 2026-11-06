@@ -398,4 +398,27 @@ void main() {
     expect(duties[1].people, ['待定']);
     expect(duties[2].people, ['待定']);
   });
+
+  test('幼兒主日老師連兩週，再換下一位', () {
+    final result = autoAssign(
+      targets: [
+        for (var i = 0; i < 6; i++)
+          _week(DateTime.utc(2027, 1, 3).add(Duration(days: 7 * i)), {
+            '幼兒主日': ['待定'],
+          }),
+      ],
+      history: const [],
+      eligible: const {
+        '幼兒主日': {'Jeili', 'Tiyu', 'Paulina'},
+      },
+      consecutiveWeeks: const {'幼兒主日': 2},
+    );
+    final order = [
+      for (final r in result.updated) r.duties.single.people.single,
+    ];
+    expect(order[0], order[1]);
+    expect(order[2], order[3]);
+    expect(order[4], order[5]);
+    expect({order[0], order[2], order[4]}, hasLength(3), reason: '$order');
+  });
 }

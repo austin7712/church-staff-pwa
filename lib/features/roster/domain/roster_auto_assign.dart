@@ -179,7 +179,10 @@ AutoAssignResult autoAssign({
   Set<String> skipRoles = const {kTwSpeakerRole, kMwSpeakerRole},
   Map<String, List<String>> groupRoles = const {},
   List<String> templateRoles = const [],
+  Map<String, int> consecutiveWeeks = const {},
 }) {
+  // 要連續排幾週的項目（例如幼兒主日老師連兩週）：目前這一輪是誰、還剩幾週。
+  final streak = <String, ({List<String> people, int left})>{};
   final patterns = _learnPatterns(history);
   final monthGroups = {
     for (final MapEntry(key: role, value: groups) in groupRoles.entries)
@@ -279,6 +282,26 @@ AutoAssignResult autoAssign({
         continue;
       }
       if (skipRoles.contains(duty.role) || !_needsFilling(duty)) {
+        final weeks = consecutiveWeeks[duty.role] ?? 1;
+        if (weeks > 1 && !skipRoles.contains(duty.role)) {
+          // 已經排好的週也算進這一輪。
+          final people = [
+            for (final p in duty.people)
+              if (!isPlaceholderPerson(p.trim()) && p.trim().isNotEmpty)
+                p.trim(),
+          ];
+          if (people.isNotEmpty) {
+            final cur = streak[duty.role];
+            final same =
+                cur != null &&
+                cur.left > 0 &&
+                cur.people.length == people.length &&
+                cur.people.every(people.contains);
+            streak[duty.role] = same
+                ? (people: people, left: cur.left - 1)
+                : (people: people, left: weeks - 1);
+          }
+        }
         duties.add(duty);
         continue;
       }
@@ -346,7 +369,22 @@ AutoAssignResult autoAssign({
               return a.compareTo(b);
             });
 
-      final picked = candidates.take(need.count).toList();
+      final weeks = consecutiveWeeks[duty.role] ?? 1;
+      final cur = streak[duty.role];
+      final keep =
+          weeks > 1 &&
+          cur != null &&
+          cur.left > 0 &&
+          cur.people.length == need.count &&
+          cur.people.every(candidates.contains);
+      final picked = keep
+          ? List<String>.from(cur.people)
+          : candidates.take(need.count).toList();
+      if (weeks > 1 && picked.isNotEmpty) {
+        streak[duty.role] = keep
+            ? (people: picked, left: cur.left - 1)
+            : (people: picked, left: weeks - 1);
+      }
       if (picked.isEmpty) {
         duties.add(duty);
         shortfalls.add(
