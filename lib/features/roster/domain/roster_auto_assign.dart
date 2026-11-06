@@ -181,6 +181,7 @@ AutoAssignResult autoAssign({
   List<String> templateRoles = const [],
   Map<String, int> consecutiveWeeks = const {},
   List<List<String>> families = const [],
+  Map<String, Map<String, double>> ratios = const {},
 }) {
   // 夫妻、家人：一起出席一起缺席，盡量排在同一天。名字不分大小寫。
   final familyOf = <String, Set<String>>{};
@@ -372,10 +373,15 @@ AutoAssignResult autoAssign({
               // 同時在音控、司會、奉獻、兒童主日名單上）不會每一項都排到
               // 跟別人一樣多，總量才不會比別人高出一大截。
               // 家人當天已經有服事的，可以比別人多排一次（一起出席）。
-              int score(String p) =>
-                  (counts[p] ?? 0) +
-                  3 * (planTotals[p] ?? 0) -
-                  (familyHere(p) ? 1 : 0);
+              // 服事比例（同工名單裡設的，例如 50%）：次數除以比例再比，
+              // 50% 的人排一次等於別人排兩次。
+              double score(String p) {
+                final ratio = ratios[duty.role]?[p] ?? 1.0;
+                final base = (counts[p] ?? 0) + 3 * (planTotals[p] ?? 0);
+                // 排一次會讓 base 加 4（這一項 1＋總次數 3），家人在場就讓一次。
+                return (base + 1) / (ratio <= 0 ? 0.01 : ratio) -
+                    (familyHere(p) ? 4 : 0);
+              }
               final byCount = score(a).compareTo(score(b));
               if (byCount != 0) return byCount;
               final byFamily = (familyHere(b) ? 1 : 0).compareTo(
@@ -559,13 +565,22 @@ List<ServiceRoster> clearAssignments(
 /// 服事的人），一鍵安排只從這份名單挑。還沒整理過的服事項目，用今年做過
 /// 的人當預設（見 [withDefaults]）。
 class StaffPool {
-  const StaffPool([this.roles = const {}, this.families = const []]);
+  const StaffPool([
+    this.roles = const {},
+    this.families = const [],
+    this.ratios = const {},
+  ]);
 
   /// 服事項目 → 名單（照安排者排的順序）。
   final Map<String, List<String>> roles;
 
   /// 夫妻、家人（一起出席一起缺席），一鍵安排盡量排同一天。
   final List<List<String>> families;
+
+  /// 服事比例：服事項目 → 人 → 0~1（沒設就是 1，也就是 100%）。
+  final Map<String, Map<String, double>> ratios;
+
+  double ratioOf(String role, String person) => ratios[role]?[person] ?? 1.0;
 
   /// 沒有整理過的項目補上預設：今年做過的人，做得多的在前面。
   StaffPool withDefaults(
@@ -583,7 +598,7 @@ class StaffPool {
                   }))
                 .map((e) => e.key)
                 .toList(),
-    }, families);
+    }, families, ratios);
   }
 
   Map<String, Set<String>> get eligible => {
@@ -595,6 +610,12 @@ class StaffPool {
     // Firestore 不能存陣列裡的陣列，一家一個 map。
     'families': [
       for (final f in families) {'members': f},
+    ],
+    // 用陣列存：merge 寫入時陣列整個取代，改回 100% 的人才會真的拿掉。
+    'ratios': [
+      for (final MapEntry(key: role, value: byPerson) in ratios.entries)
+        for (final MapEntry(key: person, value: r) in byPerson.entries)
+          if (r != 1.0) {'role': role, 'person': person, 'ratio': r},
     ],
   };
 
@@ -610,8 +631,22 @@ class StaffPool {
                 if (m is String && m.trim().isNotEmpty) m.trim(),
             ],
     ].where((f) => f.length > 1).toList();
+    final ratios = <String, Map<String, double>>{};
+    final rawRatios = json['ratios'];
+    if (rawRatios is List) {
+      for (final e in rawRatios) {
+        if (e is! Map) continue;
+        final role = e['role'];
+        final person = e['person'];
+        final r = e['ratio'];
+        if (role is String && person is String && r is num && r > 0 && r < 1) {
+          ratios.putIfAbsent(canonicalRole(role), () => {})[person] =
+              r.toDouble();
+        }
+      }
+    }
     final pool = json['pool'];
-    if (pool is! Map) return StaffPool(const {}, families);
+    if (pool is! Map) return StaffPool(const {}, families, ratios);
     return StaffPool({
       for (final e in pool.entries)
         if (e.key is String && e.value is List)
@@ -619,6 +654,6 @@ class StaffPool {
             for (final v in e.value as List)
               if (v is String && v.trim().isNotEmpty) v.trim(),
           ],
-    }, families);
+    }, families, ratios);
   }
 }
