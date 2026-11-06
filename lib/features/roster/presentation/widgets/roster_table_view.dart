@@ -191,8 +191,7 @@ class RosterTableView extends StatelessWidget {
                   children: rows,
                 );
               }
-              return SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
+              return _SideScroll(
                 child: SizedBox(
                   width: fixed + _minColumnWidth * model.columns.length,
                   child: Table(
@@ -425,6 +424,97 @@ class _NameTag extends StatelessWidget {
           fontWeight: weight,
         ),
       ),
+    );
+  }
+}
+
+/// 表格太寬時的左右滑動：下方一直顯示捲軸、右邊有漸層陰影和「滑動看更多」
+/// 提示，滑到底就收起來，讓人一看就知道還有欄位。
+class _SideScroll extends StatefulWidget {
+  const _SideScroll({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SideScroll> createState() => _SideScrollState();
+}
+
+class _SideScrollState extends State<_SideScroll> {
+  final _controller = ScrollController();
+  bool _atEnd = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_update);
+  }
+
+  void _update() {
+    if (!_controller.hasClients) return;
+    final atEnd =
+        _controller.offset >= _controller.position.maxScrollExtent - 4;
+    if (atEnd != _atEnd) setState(() => _atEnd = atEnd);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Scrollbar(
+          controller: _controller,
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            controller: _controller,
+            scrollDirection: Axis.horizontal,
+            // 留位置給捲軸，不壓在最後一列上。
+            padding: const EdgeInsets.only(bottom: 10),
+            child: widget.child,
+          ),
+        ),
+        if (!_atEnd)
+          Positioned(
+            top: 0,
+            bottom: 10,
+            right: 0,
+            child: IgnorePointer(
+              child: Container(
+                width: 36,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0),
+                      Colors.black.withValues(alpha: 0.12),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (!_atEnd)
+          Positioned(
+            top: 6,
+            right: 6,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  '左右滑動看更多 →',
+                  style: TextStyle(fontSize: 11, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
