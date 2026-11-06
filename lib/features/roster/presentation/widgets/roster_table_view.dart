@@ -54,6 +54,9 @@ class RosterTableView extends StatelessWidget {
   bool get _editing => onCellTap != null;
 
   static const _divider = Color(0xFFE3E7ED);
+
+  /// 一欄至少要放得下一個英文名字（例如 Jasmine、Crispin）。
+  static const double _minColumnWidth = 64;
   static const _dayDivider = Color(0xFFC9D1DB);
 
   @override
@@ -173,10 +176,38 @@ class RosterTableView extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             side: const BorderSide(color: _divider),
           ),
-          child: Table(
-            columnWidths: widths,
-            defaultVerticalAlignment: TableCellVerticalAlignment.top,
-            children: rows,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final fixed = 48.0 + (model.hasLanes ? 18.0 : 0.0);
+              final perColumn = model.columns.isEmpty
+                  ? double.infinity
+                  : (constraints.maxWidth - fixed) / model.columns.length;
+              // 手機上欄位太多時（總覽有十欄），每欄固定寬度、整張表左右滑，
+              // 名字才不會被拆成兩行。夠寬時照舊平均分。
+              if (perColumn >= _minColumnWidth) {
+                return Table(
+                  columnWidths: widths,
+                  defaultVerticalAlignment: TableCellVerticalAlignment.top,
+                  children: rows,
+                );
+              }
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: fixed + _minColumnWidth * model.columns.length,
+                  child: Table(
+                    columnWidths: {
+                      for (final e in widths.entries)
+                        e.key: e.value is FlexColumnWidth
+                            ? const FixedColumnWidth(_minColumnWidth)
+                            : e.value,
+                    },
+                    defaultVerticalAlignment: TableCellVerticalAlignment.top,
+                    children: rows,
+                  ),
+                ),
+              );
+            },
           ),
         ),
         if (_editing)
@@ -384,7 +415,8 @@ class _NameTag extends StatelessWidget {
       ),
       child: Text(
         cell.text,
-        softWrap: true,
+        // 名字不拆行：欄位不夠寬時整張表改成可以左右滑（見 build）。
+        softWrap: false,
         style: TextStyle(
           fontSize: 12,
           height: 1.3,
