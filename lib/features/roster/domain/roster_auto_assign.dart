@@ -260,7 +260,7 @@ AutoAssignResult autoAssign({
     final day = dayKey(roster.date);
     final dayBusy = busy.putIfAbsent(day, () => {});
     var changed = false;
-    final duties = <RosterEntry>[];
+    final slots = List<RosterEntry?>.filled(0, null, growable: true);
     final month = _monthKey(roster.date);
     // 服事項目設定裡有、這一週卻還沒有的項目（建立空白週次之後才加的項目，
     // 例如幼兒主日）：補上「待定」再排。
@@ -279,15 +279,24 @@ AutoAssignResult autoAssign({
         ],
       );
     }
-    for (final duty in roster.duties) {
+    slots.addAll(List<RosterEntry?>.filled(roster.duties.length, null));
+    // 奉獻點算最後排：前面排好的人當天本來就會到，優先請他們留下來點算。
+    final order = [
+      for (var k = 0; k < roster.duties.length; k++)
+        if (!kPreferPresentRoles.contains(canonicalRole(roster.duties[k].role))) k,
+      for (var k = 0; k < roster.duties.length; k++)
+        if (kPreferPresentRoles.contains(canonicalRole(roster.duties[k].role))) k,
+    ];
+    for (final slot in order) {
+      final duty = roster.duties[slot];
       final byMonth = monthGroups[duty.role];
       if (byMonth != null) {
         final group = byMonth[month];
         if (group == null || !_needsFilling(duty)) {
-          duties.add(duty);
+          slots[slot] = (duty);
           continue;
         }
-        duties.add(duty.copyWith(people: [group], personIdsByName: const {}));
+        slots[slot] = (duty.copyWith(people: [group], personIdsByName: const {}));
         changed = true;
         assignments.add(
           AutoAssignment(roster: roster, role: duty.role, people: [group]),
@@ -315,7 +324,7 @@ AutoAssignResult autoAssign({
                 : (people: people, left: weeks - 1);
           }
         }
-        duties.add(duty);
+        slots[slot] = (duty);
         continue;
       }
       // 還沒標「聖餐」的空白週（例如整年的空白表）：每個月第一個主日當聖餐週。
@@ -335,7 +344,7 @@ AutoAssignResult autoAssign({
               ? const _Need.people(1)
               : null);
       if (need == null || (!need.taiwanese && need.count == 0)) {
-        duties.add(duty);
+        slots[slot] = (duty);
         continue;
       }
       if (need.taiwanese) {
@@ -343,7 +352,7 @@ AutoAssignResult autoAssign({
           people: const [kTaiwanesePlaceholder],
           personIdsByName: const {},
         );
-        duties.add(filled);
+        slots[slot] = (filled);
         changed = true;
         continue;
       }
@@ -379,8 +388,14 @@ AutoAssignResult autoAssign({
                 final ratio = ratios[duty.role]?[p] ?? 1.0;
                 final base = (counts[p] ?? 0) + 3 * (planTotals[p] ?? 0);
                 // 排一次會讓 base 加 4（這一項 1＋總次數 3），家人在場就讓一次。
+                // 奉獻點算：當天已經有其他服事的人本來就在，盡量請他們點算
+                // （讓兩次的份量），不用另外多叫一個人來。
+                final present =
+                    kPreferPresentRoles.contains(canonicalRole(duty.role)) &&
+                    (dayBusy[p] ?? const <String>{}).isNotEmpty;
                 return (base + 1) / (ratio <= 0 ? 0.01 : ratio) -
-                    (familyHere(p) ? 4 : 0);
+                    (familyHere(p) ? 4 : 0) -
+                    (present ? 8 : 0);
               }
               final byCount = score(a).compareTo(score(b));
               if (byCount != 0) return byCount;
@@ -424,7 +439,7 @@ AutoAssignResult autoAssign({
             : (people: picked, left: weeks - 1);
       }
       if (picked.isEmpty) {
-        duties.add(duty);
+        slots[slot] = (duty);
         shortfalls.add(
           AutoAssignment(roster: roster, role: duty.role, people: const []),
         );
@@ -434,7 +449,7 @@ AutoAssignResult autoAssign({
         record(duty.role, p, roster.date);
         dayBusy.putIfAbsent(p, () => {}).add(duty.role);
       }
-      duties.add(duty.copyWith(people: picked, personIdsByName: const {}));
+      slots[slot] = (duty.copyWith(people: picked, personIdsByName: const {}));
       changed = true;
       final assignment = AutoAssignment(
         roster: roster,
@@ -444,6 +459,7 @@ AutoAssignResult autoAssign({
       assignments.add(assignment);
       if (picked.length < need.count) shortfalls.add(assignment);
     }
+    final duties = [for (final d in slots) d!];
     if (changed) updated.add(roster.copyWith(duties: duties));
   }
 
@@ -473,6 +489,9 @@ Set<String> communionWeeks(List<ServiceRoster> rosters) {
   }
   return result;
 }
+
+/// 盡量排當天已經有服事的人的項目（奉獻點算：聚會後留下來點就好）。
+const Set<String> kPreferPresentRoles = {'奉獻點算'};
 
 String _monthKey(DateTime d) => '${d.year}-${d.month}';
 
