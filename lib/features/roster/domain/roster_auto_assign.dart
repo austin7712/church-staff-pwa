@@ -374,7 +374,7 @@ AutoAssignResult autoAssign({
               // 家人當天已經有服事的，可以比別人多排一次（一起出席）。
               int score(String p) =>
                   (counts[p] ?? 0) +
-                  (planTotals[p] ?? 0) -
+                  3 * (planTotals[p] ?? 0) -
                   (familyHere(p) ? 1 : 0);
               final byCount = score(a).compareTo(score(b));
               if (byCount != 0) return byCount;

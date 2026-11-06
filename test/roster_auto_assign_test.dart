@@ -525,6 +525,6 @@ void main() {
         if (e.key != 'Multi') e.value,
     ];
     final maxOther = others.reduce((a, b) => a > b ? a : b);
-    expect(totals['Multi'] ?? 0, lessThanOrEqualTo(maxOther + 2), reason: '$totals');
+    expect(totals['Multi'] ?? 0, lessThanOrEqualTo(maxOther + 1), reason: '$totals');
   });
 }
