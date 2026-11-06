@@ -368,9 +368,14 @@ AutoAssignResult autoAssign({
               )
               .toList()
             ..sort((a, b) {
+              // 同一項的次數＋所有項目的總次數一起看：兼很多項的人（例如
+              // 同時在音控、司會、奉獻、兒童主日名單上）不會每一項都排到
+              // 跟別人一樣多，總量才不會比別人高出一大截。
               // 家人當天已經有服事的，可以比別人多排一次（一起出席）。
               int score(String p) =>
-                  (counts[p] ?? 0) - (familyHere(p) ? 1 : 0);
+                  (counts[p] ?? 0) +
+                  (planTotals[p] ?? 0) -
+                  (familyHere(p) ? 1 : 0);
               final byCount = score(a).compareTo(score(b));
               if (byCount != 0) return byCount;
               final byFamily = (familyHere(b) ? 1 : 0).compareTo(
