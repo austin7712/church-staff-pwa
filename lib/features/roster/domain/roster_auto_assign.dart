@@ -180,7 +180,18 @@ AutoAssignResult autoAssign({
   Map<String, List<String>> groupRoles = const {},
   List<String> templateRoles = const [],
   Map<String, int> consecutiveWeeks = const {},
+  List<List<String>> families = const [],
 }) {
+  // 夫妻、家人：一起出席一起缺席，盡量排在同一天。名字不分大小寫。
+  final familyOf = <String, Set<String>>{};
+  for (final f in families) {
+    final members = {for (final m in f) m.trim().toLowerCase()}..remove('');
+    for (final m in members) {
+      familyOf.putIfAbsent(m, () => {}).addAll(members.difference({m}));
+    }
+  }
+  // 這次期間每個人所有項目加起來的次數（次數相同時，總次數少的先排）。
+  final planTotals = <String, int>{};
   // 要連續排幾週的項目（例如幼兒主日老師連兩週）：目前這一輪是誰、還剩幾週。
   final streak = <String, ({List<String> people, int left})>{};
   final patterns = _learnPatterns(history);
@@ -208,6 +219,7 @@ AutoAssignResult autoAssign({
     if (count) {
       final byPerson = planCounts.putIfAbsent(role, () => {});
       byPerson[person] = (byPerson[person] ?? 0) + 1;
+      planTotals[person] = (planTotals[person] ?? 0) + 1;
     }
     final last = lastServed.putIfAbsent(role, () => {});
     final prev = last[person];
@@ -338,6 +350,10 @@ AutoAssignResult autoAssign({
       final counts = planCounts[duty.role] ?? const <String, int>{};
       final last = lastServed[duty.role] ?? const <String, DateTime>{};
       final lastWeek = roster.date.subtract(const Duration(days: 7));
+      bool familyHere(String p) =>
+          (familyOf[p.toLowerCase()] ?? const <String>{}).any(
+            (f) => dayBusy.keys.any((b) => b.toLowerCase() == f),
+          );
       bool servedLastWeek(String p) {
         final d = last[p];
         return d != null && dayKey(d) == dayKey(lastWeek);
@@ -352,8 +368,19 @@ AutoAssignResult autoAssign({
               )
               .toList()
             ..sort((a, b) {
-              final byCount = (counts[a] ?? 0).compareTo(counts[b] ?? 0);
+              // 家人當天已經有服事的，可以比別人多排一次（一起出席）。
+              int score(String p) =>
+                  (counts[p] ?? 0) - (familyHere(p) ? 1 : 0);
+              final byCount = score(a).compareTo(score(b));
               if (byCount != 0) return byCount;
+              final byFamily = (familyHere(b) ? 1 : 0).compareTo(
+                familyHere(a) ? 1 : 0,
+              );
+              if (byFamily != 0) return byFamily;
+              final byTotal = (planTotals[a] ?? 0).compareTo(
+                planTotals[b] ?? 0,
+              );
+              if (byTotal != 0) return byTotal;
               final byStreak = (servedLastWeek(a) ? 1 : 0).compareTo(
                 servedLastWeek(b) ? 1 : 0,
               );
@@ -527,10 +554,13 @@ List<ServiceRoster> clearAssignments(
 /// 服事的人），一鍵安排只從這份名單挑。還沒整理過的服事項目，用今年做過
 /// 的人當預設（見 [withDefaults]）。
 class StaffPool {
-  const StaffPool([this.roles = const {}]);
+  const StaffPool([this.roles = const {}, this.families = const []]);
 
   /// 服事項目 → 名單（照安排者排的順序）。
   final Map<String, List<String>> roles;
+
+  /// 夫妻、家人（一起出席一起缺席），一鍵安排盡量排同一天。
+  final List<List<String>> families;
 
   /// 沒有整理過的項目補上預設：今年做過的人，做得多的在前面。
   StaffPool withDefaults(
@@ -548,7 +578,7 @@ class StaffPool {
                   }))
                 .map((e) => e.key)
                 .toList(),
-    });
+    }, families);
   }
 
   Map<String, Set<String>> get eligible => {
@@ -557,12 +587,26 @@ class StaffPool {
 
   Map<String, dynamic> toJson() => {
     'pool': {for (final e in roles.entries) e.key: e.value},
+    // Firestore 不能存陣列裡的陣列，一家一個 map。
+    'families': [
+      for (final f in families) {'members': f},
+    ],
   };
 
   factory StaffPool.fromJson(Object? json) {
     if (json is! Map) return const StaffPool();
+    final rawFamilies = json['families'];
+    final families = <List<String>>[
+      if (rawFamilies is List)
+        for (final f in rawFamilies)
+          if (f is Map && f['members'] is List)
+            [
+              for (final m in f['members'] as List)
+                if (m is String && m.trim().isNotEmpty) m.trim(),
+            ],
+    ].where((f) => f.length > 1).toList();
     final pool = json['pool'];
-    if (pool is! Map) return const StaffPool();
+    if (pool is! Map) return StaffPool(const {}, families);
     return StaffPool({
       for (final e in pool.entries)
         if (e.key is String && e.value is List)
@@ -570,6 +614,6 @@ class StaffPool {
             for (final v in e.value as List)
               if (v is String && v.trim().isNotEmpty) v.trim(),
           ],
-    });
+    }, families);
   }
 }
