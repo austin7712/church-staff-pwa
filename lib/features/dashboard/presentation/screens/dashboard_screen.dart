@@ -701,10 +701,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return _buildSectionCard(
           title: window.title,
           icon: Icons.volunteer_activism,
-          child: SizedBox(
-            height: _seasonListHeight(assignments.length),
-            child: Scrollbar(
-              child: ListView.separated(
+          // 全部列出來、跟著首頁一起捲，不再限制成只看得到三筆的小視窗。
+          child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: EdgeInsets.zero,
                 itemCount: assignments.length,
                 separatorBuilder: (_, itemIndex) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
@@ -743,22 +744,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                 },
               ),
-            ),
-          ),
         );
       },
     );
-  }
-
-  double _seasonListHeight(int itemCount) {
-    const maxVisibleItems = 3;
-    const rowHeight = 48.0;
-    const separatorHeight = 8.0;
-    final visibleCount = itemCount < maxVisibleItems
-        ? itemCount
-        : maxVisibleItems;
-    if (visibleCount <= 0) return 0;
-    return (visibleCount * rowHeight) + ((visibleCount - 1) * separatorHeight);
   }
 
   // 上一次算出來的本季服事，避免每次 setState（推播開關、每日靈糧載入…）
