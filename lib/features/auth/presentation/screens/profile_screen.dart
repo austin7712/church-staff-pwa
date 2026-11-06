@@ -393,7 +393,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     // version.json 跟著 bundle 一起進快取（見 AppVersionService）。
                     if (info != null)
                       Text(
-                        '更新於 ${_buildVersionDateText(info)}',
+                        info.label == null
+                            ? '更新於 ${_buildVersionDateText(info)}'
+                            : '版本 ${info.label}・更新於 ${_buildVersionDateText(info)}',
                         textAlign: TextAlign.center,
                         style: captionStyle,
                       ),
