@@ -568,4 +568,22 @@ void main() {
     expect(back.ratioOf('兒童主日', 'Vivian'), 1.0);
     expect(back.ratios['兒童主日']!.containsKey('Vivian'), isFalse);
   });
+
+  test('奉獻點算盡量排當天已經有服事的人；順序照原本的服事項目', () {
+    final result = autoAssign(
+      targets: [
+        _week(DateTime.utc(2027, 1, 3), {
+          '奉獻點算': ['待定'],
+          '音控': ['Kevin'],
+        }),
+      ],
+      history: const [],
+      eligible: const {
+        '奉獻點算': {'Ann', 'Kevin'},
+      },
+    );
+    final duties = result.updated.single.duties;
+    expect(duties.map((d) => d.role), ['奉獻點算', '音控']);
+    expect(duties.first.people, ['Kevin'], reason: 'Kevin 當天本來就在');
+  });
 }
