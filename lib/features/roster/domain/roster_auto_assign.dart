@@ -384,6 +384,15 @@ AutoAssignResult autoAssign({
       }
 
       final counts = planCounts[duty.role] ?? const <String, int>{};
+      final pool = eligible[duty.role] ?? const <String>{};
+      final roleAvg = pool.isEmpty
+          ? 0.0
+          : pool.fold<int>(0, (sum, p) => sum + (counts[p] ?? 0)) / pool.length;
+      bool owed(String p) {
+        final r = ratios[duty.role]?[p];
+        if (r == null || r >= 1) return false;
+        return r * roleAvg - (counts[p] ?? 0) >= 1;
+      }
       final last = lastServed[duty.role] ?? const <String, DateTime>{};
       final lastWeek = roster.date.subtract(const Duration(days: 7));
       bool familyHere(String p) =>
@@ -404,6 +413,11 @@ AutoAssignResult autoAssign({
               )
               .toList()
             ..sort((a, b) {
+              // 有設服事比例的人，保證拿到「這一項平均次數 × 比例」左右的份：
+              // 例如 Jasmine 幼兒主日 25%，別人平均 12 次時她大約 3 次。
+              // 不然她兼了兒童主日、天數比較多，就一直輪不到。
+              final byOwed = (owed(b) ? 1 : 0).compareTo(owed(a) ? 1 : 0);
+              if (byOwed != 0) return byOwed;
               // 同一項的次數＋所有項目的總次數一起看：兼很多項的人（例如
               // 同時在音控、司會、奉獻、兒童主日名單上）不會每一項都排到
               // 跟別人一樣多，總量才不會比別人高出一大截。
