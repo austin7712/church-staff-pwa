@@ -81,7 +81,7 @@ jobs:
         working-directory: web-tests
 
       - name: Test the LINE reminder worker (換班／代班)
-        run: node --test ipcf/line-reminder/
+        run: node --test ipcf/line-reminder/worker.test.mjs
 
   build-and-deploy:
     needs: [firestore-rules, functions-tests, web-tests]
