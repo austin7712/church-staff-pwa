@@ -415,6 +415,62 @@ Map<String, int> serviceDays(List<ServiceRoster> rosters) {
   return {for (final e in days.entries) e.key: e.value.length};
 }
 
+/// 一個人在一段期間的服事量（服事量表用）。
+class PersonLoad {
+  const PersonLoad({
+    required this.name,
+    required this.days,
+    required this.slots,
+    required this.byRole,
+  });
+
+  final String name;
+  final int days;
+  final int slots;
+
+  /// 服事項目 → 次數，照服事項目設定的順序。
+  final Map<String, int> byRole;
+}
+
+/// 每個人的天數、次數、各項次數；照天數多到少，再照次數、名字。
+/// 小組（愛餐整理）不是個人，不列。
+List<PersonLoad> personLoads(
+  List<ServiceRoster> rosters, {
+  List<String> roleOrder = const [],
+}) {
+  final days = serviceDays(rosters);
+  final byPerson = <String, Map<String, int>>{};
+  for (final roster in rosters) {
+    for (final duty in roster.duties) {
+      if (isGroupRole(duty.role)) continue;
+      for (final person in duty.people.map((p) => p.trim()).toSet()) {
+        if (person.isEmpty || isPlaceholderPerson(person)) continue;
+        final m = byPerson.putIfAbsent(person, () => {});
+        m[duty.role] = (m[duty.role] ?? 0) + 1;
+      }
+    }
+  }
+  final result = [
+    for (final MapEntry(key: name, value: roles) in byPerson.entries)
+      PersonLoad(
+        name: name,
+        days: days[name] ?? 0,
+        slots: roles.values.fold(0, (a, b) => a + b),
+        byRole: () {
+          final keys = roles.keys.toList();
+          sortRolesByOrder(keys, roleOrder);
+          return {for (final k in keys) k: roles[k]!};
+        }(),
+      ),
+  ]..sort((a, b) {
+      final byDays = b.days.compareTo(a.days);
+      if (byDays != 0) return byDays;
+      final bySlots = b.slots.compareTo(a.slots);
+      return bySlots != 0 ? bySlots : a.name.compareTo(b.name);
+    });
+  return result;
+}
+
 /// 照「服事項目設定」的順序排（[order]）。不在設定裡的放最後，保持原本先後。
 void sortRolesByOrder(List<String> roles, List<String> order) {
   if (order.isEmpty) return;
