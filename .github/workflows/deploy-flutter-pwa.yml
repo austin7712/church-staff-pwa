@@ -80,6 +80,9 @@ jobs:
         run: npm test
         working-directory: web-tests
 
+      - name: Test the LINE reminder worker (換班／代班)
+        run: node --test ipcf/line-reminder/
+
   build-and-deploy:
     needs: [firestore-rules, functions-tests, web-tests]
     runs-on: ubuntu-latest

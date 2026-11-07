@@ -68,6 +68,8 @@ Settings → Secrets and variables → Actions。值不寫在這裡；需要時�
   - 排程（UTC）：`0 3 * * THU,SUN` 和 `0 4 * * THU,SUN`。兩條是為了夏令／冬令時間，程式只會在當地晚上 8 點那次發送。
 - **檢查**：瀏覽器開 `https://ipcf-line-reminder.<子網域>.workers.dev/admin/preview?key=<ADMIN_KEY>`，可以看到這次會發給誰（不會真的發送）。
 - **用量**：LINE 官方帳號後台 →「分析」可以看這個月用了幾則。
+- **換班／代班**：同工傳「換班」（或按選單），選自己的服事 → 代班或互換 → 小幫手從同工名單推薦人選（當天沒有不能兼任的服事、前後一週沒有同一項、比例不是 0%，今年天數少的在前）→ 已私下講好就送出，或請小幫手私訊對方按同意／婉拒（婉拒會把新的推薦名單傳回給申請人）。申請存在 KV（`swapreq:<id>`），管理員在 App「我的 → 換班申請」核准：App 用管理員權限改服事表，再呼叫 Worker 的 `/api/swaps/<id>` 用 LINE 通知雙方。App 用 `LINE_WORKER_URL`（`lib/features/roster/data/swap_request_api.dart`）找到 Worker；Worker 只接受 `role` 是 `admin` 的 Firebase 登入憑證。
+- **測試**：`node --test ipcf/line-reminder/`（CI 也會跑）。
 
 ## 權限與資料安全
 

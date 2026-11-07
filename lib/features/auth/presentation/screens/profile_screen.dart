@@ -15,6 +15,8 @@ import '../../domain/entities/user.dart';
 import '../providers/session_provider.dart';
 import 'user_management_screen.dart' deferred as user_management_screen;
 import 'group_settings_screen.dart' deferred as group_settings_screen;
+import '../../../roster/presentation/screens/swap_requests_screen.dart'
+    deferred as swap_requests_screen;
 import '../../../services/presentation/screens/service_settings_screen.dart'
     deferred as service_settings_screen;
 
@@ -280,6 +282,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 if (found == null) return const SizedBox.shrink();
                 return _NewReleaseTile(release: found.$1, current: found.$2);
               },
+            ),
+            ListTile(
+              leading: const Icon(Icons.swap_horiz),
+              title: const Text('換班申請'),
+              subtitle: const Text('核准 LINE 小幫手送來的換班、代班'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _loadAndPush(
+                context,
+                swap_requests_screen.loadLibrary,
+                () => swap_requests_screen.SwapRequestsScreen(),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.manage_accounts),
