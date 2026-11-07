@@ -8,11 +8,11 @@ void main() {
       rosterCounts: const {'Jasemine': 30, 'Daniel': 40, 'Anting': 2, 'Kevin': 20},
       userNames: const ['Daniel Wang'],
     );
-    final groups = [for (final g in r.similar) g.names];
-    expect(groups, contains(['Jasemine', 'Jasmine']));
-    expect(groups, contains(['Anting', 'An-ting']));
-    expect(groups, contains(['Kevin', 'kevin']));
-    expect(groups.any((g) => g.contains('Daniel')), isFalse);
+    final groups = [for (final g in r.similar) g.names.join('|')];
+    expect(groups, contains('Jasemine|Jasmine'));
+    expect(groups, contains('Anting|An-ting'));
+    expect(groups, contains('Kevin|kevin'));
+    expect(groups.any((g) => g.split('|').contains('Daniel')), isFalse);
   });
 
   test('名單上有、但服事表和帳號都沒有的名字', () {
