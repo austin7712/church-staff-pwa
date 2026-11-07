@@ -686,4 +686,19 @@ void main() {
         .length;
     expect(n, inInclusiveRange(1, 4), reason: 'Jasmine 幼兒主日 $n 次');
   });
+
+  test('服事比例 0%：留在名單上，但一鍵安排不排', () {
+    const pool = StaffPool(
+      {
+        '音控': ['Austin', 'Henry'],
+      },
+      [],
+      {
+        '音控': {'Austin': 0.0},
+      },
+    );
+    final back = StaffPool.fromJson(pool.toJson());
+    expect(back.roles['音控'], ['Austin', 'Henry']);
+    expect(back.eligible['音控'], {'Henry'});
+  });
 }

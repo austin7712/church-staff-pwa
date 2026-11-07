@@ -709,8 +709,13 @@ class StaffPool {
     }, families, ratios);
   }
 
+  /// 一鍵安排可以挑的人：服事比例 0% 的人留在名單上，但不自動排。
   Map<String, Set<String>> get eligible => {
-    for (final e in roles.entries) e.key: e.value.toSet(),
+    for (final e in roles.entries)
+      e.key: {
+        for (final p in e.value)
+          if (ratioOf(e.key, p) > 0) p,
+      },
   };
 
   Map<String, dynamic> toJson() => {
@@ -747,7 +752,7 @@ class StaffPool {
         final role = e['role'];
         final person = e['person'];
         final r = e['ratio'];
-        if (role is String && person is String && r is num && r > 0 && r < 1) {
+        if (role is String && person is String && r is num && r >= 0 && r < 1) {
           ratios.putIfAbsent(canonicalRole(role), () => {})[person] =
               r.toDouble();
         }
