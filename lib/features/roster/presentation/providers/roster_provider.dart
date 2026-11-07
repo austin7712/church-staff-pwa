@@ -11,6 +11,7 @@ import '../../../../core/utils/error_messages.dart';
 import '../../domain/staff_directory.dart';
 import '../../domain/roster_import.dart';
 import '../../domain/staff_order.dart';
+import '../../domain/swap_request.dart';
 import '../../../../core/utils/scroll_anchor.dart';
 import '../../../../core/widgets/text_warmup.dart';
 
@@ -605,6 +606,35 @@ class RosterProvider with ChangeNotifier {
     updated[targetIndex] = newTarget;
     _replaceRosters(updated);
     notifyListeners();
+  }
+
+  /// 換班申請要改的服事表（還沒寫入）。從 Firestore 讀最新的那幾天，不用
+  /// 畫面上的快取：申請可能是好幾週後的服事，也可能剛被別人改過。
+  Future<SwapApplyResult> prepareSwap(SwapRequest request) async {
+    final dates = [
+      ChurchTime.parseDate(request.from.dateKey),
+      if (request.to != null) ChurchTime.parseDate(request.to!.dateKey),
+    ]..sort();
+    final rosters = await _repository.getRostersInRange(
+      dates.first.subtract(const Duration(days: 1)),
+      dates.last.add(const Duration(days: 1)),
+    );
+    final result = applySwapRequest(
+      request,
+      rosters,
+      (duty, from, to) => replaceDutyPerson(duty, from, to),
+    );
+    if (!result.isOk) return result;
+    return SwapApplyResult.ok([
+      for (final roster in result.rosters) _staffOrders.sort(roster),
+    ], lockedWarning: result.lockedWarning);
+  }
+
+  /// 寫入 [prepareSwap] 改好的服事表（互換的兩天一起寫），再重新讀服事表。
+  Future<void> writeSwap(SwapApplyResult result) async {
+    if (result.rosters.isEmpty) return;
+    await _repository.updateRostersAtomically(result.rosters);
+    await fetchRosters();
   }
 
   /// Batch-update rosters in parallel. On partial failure we still sync the

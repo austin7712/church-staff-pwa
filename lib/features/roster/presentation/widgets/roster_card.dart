@@ -365,6 +365,7 @@ class RosterCard extends StatelessWidget {
               ? const [placeholderPerson]
               : duty.people,
           initialPersonIdsByName: duty.personIdsByName,
+          initialLocked: duty.locked,
           onSubmit: (selection) => _updateDuty(context, index, selection),
           submitLabel: '儲存',
           roleEditable: false,
@@ -384,6 +385,7 @@ class RosterCard extends StatelessWidget {
     newDuties[index] = newDuties[index].copyWith(
       people: selection.people,
       personIdsByName: selection.personIdsByName,
+      locked: selection.locked,
     );
 
     final newRoster = roster.copyWith(duties: newDuties);

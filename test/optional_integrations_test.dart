@@ -189,6 +189,10 @@ void main() {
   testWidgets('disabled push hides its settings without a push provider', (
     tester,
   ) async {
+    // 管理員的「我的」頁項目多，畫面拉高讓最下面的登出也排得出來。
+    tester.view.physicalSize = const Size(800, 3200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await _pumpSignedIn(
       tester,
       const ProfileScreen(versionService: _NoVersionService()),
@@ -203,6 +207,10 @@ void main() {
   ) async {
     // 開了推播也不顯示：App 只記偏好，沒有東西在週一真的寄提醒。
     ChurchConfig.current = testChurchConfig(pushNotifications: true);
+    // 管理員的「我的」頁項目多，畫面拉高讓最下面的登出也排得出來。
+    tester.view.physicalSize = const Size(800, 3200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await _pumpSignedIn(
       tester,
       const ProfileScreen(versionService: _NoVersionService()),

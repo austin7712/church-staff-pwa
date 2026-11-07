@@ -120,12 +120,14 @@ class RosterEditTable extends StatelessWidget {
               ? const [placeholderPerson]
               : existing.people,
           initialPersonIdsByName: existing?.personIdsByName ?? const {},
+          initialLocked: existing?.locked ?? false,
           onSubmit: (selection) async {
             final duties = List<RosterEntry>.from(roster.duties);
             if (index >= 0) {
               duties[index] = duties[index].copyWith(
                 people: selection.people,
                 personIdsByName: selection.personIdsByName,
+                locked: selection.locked,
               );
             } else {
               duties.add(
@@ -133,6 +135,7 @@ class RosterEditTable extends StatelessWidget {
                   role: role,
                   people: selection.people,
                   personIdsByName: selection.personIdsByName,
+                  locked: selection.locked ?? false,
                 ),
               );
             }
