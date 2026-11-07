@@ -701,4 +701,44 @@ void main() {
     expect(back.roles['音控'], ['Austin', 'Henry']);
     expect(back.eligible['音控'], {'Henry'});
   });
+
+  test('鎖定的格子：一鍵安排、一鍵清空都不動', () {
+    final week = ServiceRoster(
+      id: 'w',
+      date: DateTime.utc(2027, 1, 3),
+      type: ServiceType.sundayService,
+      serviceName: '主日崇拜',
+      duties: [
+        RosterEntry(role: '兒童主日', people: const ['Joy'], locked: true),
+        RosterEntry(role: '音控', people: const ['Hugo']),
+      ],
+    );
+    final cleared = clearAssignments([week]);
+    expect(cleared.single.duties.first.people, ['Joy']);
+    expect(cleared.single.duties.last.people, ['待定']);
+  });
+
+  test('2027 幼兒主日兩人：老師連兩週，助教每週輪', () {
+    final result = autoAssign(
+      targets: [
+        for (var i = 0; i < 4; i++)
+          _week(DateTime.utc(2027, 1, 3).add(Duration(days: 7 * i)), {
+            '幼兒主日': ['待定'],
+          }),
+      ],
+      history: const [],
+      eligible: const {
+        '幼兒主日': {'Jeili', 'Paulina', 'Tiyu', 'An-ting'},
+      },
+      consecutiveWeeks: const {'幼兒主日': 2},
+      minPeople: const {'幼兒主日': 2},
+    );
+    final weeks = [for (final r in result.updated) r.duties.single.people];
+    for (final w in weeks) {
+      expect(w, hasLength(2));
+      expect(w.toSet(), hasLength(2));
+    }
+    expect(weeks[0].first, weeks[1].first, reason: '老師連兩週：$weeks');
+    expect(weeks[2].first, weeks[3].first, reason: '$weeks');
+  });
 }

@@ -494,8 +494,25 @@ class _NameTag extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
         border: border,
       ),
-      child: Text(
-        cell.text,
+      child: Text.rich(
+        TextSpan(
+          text: cell.text,
+          children: [
+            if (cell.tag != null)
+              TextSpan(
+                text: ' ${cell.tag}',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.normal,
+                  color: cell.tag == '老師'
+                      ? const Color(0xFF8A4B00)
+                      : const Color(0xFF5B6573),
+                ),
+              ),
+            if (showConflict && cell.isLocked)
+              const TextSpan(text: ' 🔒', style: TextStyle(fontSize: 9)),
+          ],
+        ),
         // 名字不拆行：欄位不夠寬時整張表改成可以左右滑（見 build）。
         softWrap: false,
         style: TextStyle(

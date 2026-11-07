@@ -19,6 +19,28 @@ const String kMwSpeakerRole = '華語講員';
 /// 一個月由同一組負責，各組輪流。
 bool isGroupRole(String role) => role.trim().startsWith('愛餐');
 
+/// 一格兩人時分「老師」「助教」的項目：第一位是老師，第二位起是助教。
+const Set<String> kTeacherAssistantRoles = {'幼兒主日'};
+
+/// 名字旁的小標（幼兒主日兩人時：老師／助教）。只有一個人時不標。
+String? personTag(RosterEntry duty, String person) {
+  if (!kTeacherAssistantRoles.contains(duty.role)) return null;
+  final real = [
+    for (final p in duty.people)
+      if (!isPlaceholderPerson(p) && p.trim().isNotEmpty) p.trim(),
+  ];
+  if (real.length < 2) return null;
+  final i = real.indexOf(person.trim());
+  if (i < 0) return null;
+  return i == 0 ? '老師' : '助教';
+}
+
+/// 卡片、清單用：名字加上小標，例如「Jeili（老師）」。
+List<String> peopleWithTags(RosterEntry duty) => [
+  for (final p in duty.people)
+    personTag(duty, p) == null ? p : '$p（${personTag(duty, p)}）',
+];
+
 /// 不是人名、而是佔位用的字（「台語」「待定」）。
 bool isPlaceholderPerson(String name) {
   final n = name.trim();
@@ -134,7 +156,15 @@ class RosterTableCell {
     required this.isMe,
     required this.isPlaceholder,
     this.isConflict = false,
+    this.tag,
+    this.isLocked = false,
   });
+
+  /// 名字旁的小標，例如幼兒主日的「老師」「助教」。
+  final String? tag;
+
+  /// 這一格已鎖定（一鍵安排、一鍵清空不動）。
+  final bool isLocked;
 
   final String text;
   final bool isMe;
@@ -246,6 +276,8 @@ RosterTableModel buildRosterTable(
     isMe: isPersonMe(duty, person, userId: userId, userName: userName),
     isPlaceholder: isPlaceholderPerson(person),
     isConflict: conflicts.contains(person.trim()),
+    tag: personTag(duty, person),
+    isLocked: duty.locked,
   );
 
   List<RosterTableCell> cellsFor(
