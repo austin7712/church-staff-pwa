@@ -10,7 +10,7 @@ import '../domain/swap_request.dart';
 /// 換班申請存在那邊，App 只讀取與核准。
 const String kLineWorkerUrl = String.fromEnvironment(
   'LINE_WORKER_URL',
-  defaultValue: 'https://ipcf-line-reminder.ipcf.workers.dev',
+  defaultValue: 'https://ipcf-line-reminder.victorh-ipcf.workers.dev',
 );
 
 class SwapRequestException implements Exception {
