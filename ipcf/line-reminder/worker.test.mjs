@@ -237,3 +237,26 @@ test('互換：請小幫手問 → 對方婉拒 → 申請人收到新的推薦�
   await s.tap('U1', `sw:cand:${vi}`);
   assert.match(s.lastText(), /申請內容/);
 });
+
+test('全年服事：接下來一年照月份列出，加上今年已服事天數', async () => {
+  const { yearMessage } = await import('./worker.js');
+  const rosters = [
+    roster('p', addDays(TODAY, -10), [['音控', 'Austin']]),
+    roster('a', sunday(0), [['音控', 'austin'], ['奉獻點算', 'Austin']]),
+    roster('k', sunday(0), [['兒童主日', 'Joy']]),
+    roster('b', addDays(sunday(0), 40), [['司會報告', 'Austin']]),
+  ];
+  const text = yearMessage(rosters, ['Austin'], TODAY);
+  assert.match(text, /共 2 天/);
+  assert.match(text, /音控、奉獻點算/);
+  assert.match(text, /司會報告/);
+  assert.doesNotMatch(text, /兒童主日/);
+  assert.match(text, /年 \d+ 月】/);
+
+  const s = setup({ rosters, pool: samplePool });
+  await s.kv.set('user:U1', JSON.stringify(['Austin']));
+  await s.say('U1', '我的服事');
+  assert.equal(s.last().body.messages[0].quickReply.items[0].action.text, '全年服事');
+  await s.say('U1', '全年服事');
+  assert.match(s.lastText(), /接下來一年的服事/);
+});

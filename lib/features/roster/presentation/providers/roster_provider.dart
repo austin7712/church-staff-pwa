@@ -608,6 +608,10 @@ class RosterProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// 匯出試算表用：直接讀 [from]～[to] 的服事表（不限本季、下季）。
+  Future<List<ServiceRoster>> rostersInRange(DateTime from, DateTime to) =>
+      _repository.getRostersInRange(from, to);
+
   /// 換班申請要改的服事表（還沒寫入）。從 Firestore 讀最新的那幾天，不用
   /// 畫面上的快取：申請可能是好幾週後的服事，也可能剛被別人改過。
   Future<SwapApplyResult> prepareSwap(SwapRequest request) async {

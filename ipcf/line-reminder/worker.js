@@ -529,6 +529,7 @@ const HELP = [
   '',
   '【其他指令】（也可以按下方選單）',
   '・我的服事：接下來 4 週的服事',
+  '・全年服事：接下來一年每一次的服事',
   '・本週服事表：這週所有同工',
   '・換班：找人代班或互換，小幫手會推薦人選，送出後由管理者在 App 核准',
   '・申請進度：查看或取消換班申請',
@@ -615,6 +616,46 @@ export function weekRosterMessage(rosters, todayKey) {
   return lines.length > 1 ? lines.join('\n') : `${describeDate(day, todayKey)}還沒有排人。`;
 }
 
+const YEAR_BUTTON = { type: 'action', action: { type: 'message', label: '看全年服事', text: '全年服事' } };
+
+/** 「全年服事」：接下來一年每一天的服事（照月份分組），加上今年已經服事幾天。 */
+export function yearMessage(rosters, myNames, todayKey) {
+  const mine = new Set(myNames.map(normalizeName));
+  const days = new Map(); // dateKey -> [role]
+  for (const r of rosters) {
+    for (const d of r.duties) {
+      if (!d.people.some((p) => isRealPerson(p) && mine.has(normalizeName(p)))) continue;
+      if (!days.has(r.dateKey)) days.set(r.dateKey, []);
+      const roles = days.get(r.dateKey);
+      const person = d.people.find((p) => mine.has(normalizeName(p)));
+      const tag = personTag(d, person);
+      const label = tag ? `${d.role}（${tag}）` : d.role;
+      if (!roles.includes(label)) roles.push(label);
+    }
+  }
+  const order = (r) => {
+    const i = ROLE_ORDER.indexOf(r.replace(/（.*）$/, ''));
+    return i < 0 ? ROLE_ORDER.length : i;
+  };
+  const year = todayKey.slice(0, 4);
+  const past = [...days.keys()].filter((k) => k < todayKey && k.startsWith(year)).length;
+  const upcoming = [...days.keys()].filter((k) => k >= todayKey).sort();
+  const who = myNames.join('／');
+  const lines = [`📅 ${who} 接下來一年的服事（共 ${upcoming.length} 天）`];
+  let month = '';
+  for (const k of upcoming) {
+    const m = k.slice(0, 7);
+    if (m !== month) {
+      month = m;
+      lines.push('', `【${Number(k.slice(0, 4))} 年 ${Number(k.slice(5, 7))} 月】`);
+    }
+    lines.push(`${longDate(k)} ${days.get(k).sort((a, b) => order(a) - order(b)).join('、')}`);
+  }
+  if (!upcoming.length) lines.push('', '接下來一年還沒有排到服事 🙂');
+  lines.push('', `${year} 年已服事 ${past} 天，感謝你的擺上！`);
+  return lines.join('\n');
+}
+
 async function handleWebhook(request, env, ctx, fetchImpl = fetch) {
   const body = await request.text();
   const ok = await verifySignature(body, request.headers.get('x-line-signature'), env.LINE_CHANNEL_SECRET);
@@ -653,7 +694,7 @@ export async function handleEvent(env, event, fetchImpl = fetch) {
   }
   // 換班選人那一步：直接打名字
   const flow = await getFlow(env.BINDINGS, uid);
-  if (flow?.step === 'cand' && !/^(綁定|解除綁定|我的服事|本週服事|說明)/.test(text)) {
+  if (flow?.step === 'cand' && !/^(綁定|解除綁定|我的服事|全年|本週服事|說明|申請進度)/.test(text)) {
     return typedCandidate(env, uid, flow, text, event.replyToken, fetchImpl);
   }
 
@@ -688,8 +729,19 @@ export async function handleEvent(env, event, fetchImpl = fetch) {
     const rosters = await fetchRosters(env, today, addDays(today, 28), fetchImpl);
     const byName = assignmentsByName(rosters);
     const items = names.flatMap((n) => [...(byName.get(normalizeName(n))?.items.values() || [])]);
-    if (!items.length) return lineReply(env, event.replyToken, `${names.join('／')}：接下來 4 週沒有排到服事 🙂`, fetchImpl);
-    return lineReply(env, event.replyToken, buildMessage(names.join('／'), items, today, names).replace('提醒你接下來的服事', '你接下來 4 週的服事'), fetchImpl);
+    if (!items.length) {
+      return replyMessages(env, event.replyToken, [textMsg(`${names.join('／')}：接下來 4 週沒有排到服事 🙂`, [YEAR_BUTTON])], fetchImpl);
+    }
+    return replyMessages(env, event.replyToken, [
+      textMsg(buildMessage(names.join('／'), items, today, names).replace('提醒你接下來的服事', '你接下來 4 週的服事'), [YEAR_BUTTON]),
+    ], fetchImpl);
+  }
+
+  if (/^(全年服事|我的全年服事|全年|一年服事|整年服事|今年服事)$/.test(text)) {
+    const names = await getList(env.BINDINGS, `user:${uid}`);
+    if (!names.length) return lineReply(env, event.replyToken, '你還沒有綁定名字，請先傳「綁定 你的名字」。', fetchImpl);
+    const rosters = await fetchRosters(env, `${today.slice(0, 4)}-01-01`, addDays(today, 365), fetchImpl);
+    return lineReply(env, event.replyToken, yearMessage(rosters, names, today), fetchImpl);
   }
 
   return lineReply(env, event.replyToken, HELP, fetchImpl);
