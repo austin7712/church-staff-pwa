@@ -40,21 +40,21 @@ List<List<String>> rosterExportRows(
   for (final key in dates) {
     final day = byDate[key]!;
     final date = ChurchTime.parseDate(key);
-    final events = <String>[
+    final events = <String>{
       for (final r in day)
         for (final e in r.specialEvents)
           if (e.trim().isNotEmpty) e.trim(),
-    ].toSet().join('、');
+    }.join('、');
     final cells = <String>[];
     for (final role in roles) {
-      final people = <String>[
+      final people = <String>{
         for (final r in day)
           for (final d in r.duties)
             if (canonicalRole(d.role) == role)
               for (final p in d.people)
                 if (p.trim().isNotEmpty && p.trim() != placeholderPerson)
                   p.trim(),
-      ].toSet().toList();
+      };
       cells.add(people.join('、'));
     }
     rows.add([
