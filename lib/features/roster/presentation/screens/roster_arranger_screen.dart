@@ -280,6 +280,8 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         templateRoles: data.roles,
         // 幼兒主日的老師一次連兩週。
         consecutiveWeeks: const {'幼兒主日': 2},
+        // 兒童主日老師一個月換一次。
+        monthlyRoles: const {'兒童主日'},
         families: data.pool.families,
         ratios: data.pool.ratios,
       );

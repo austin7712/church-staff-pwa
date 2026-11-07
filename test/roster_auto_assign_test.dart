@@ -630,4 +630,31 @@ void main() {
     );
     expect(result.updated.single.duties.last.people, ['CT']);
   });
+
+  test('兒童主日老師一個月同一位，下個月換人', () {
+    final result = autoAssign(
+      targets: [
+        for (var i = 0; i < 13; i++)
+          _week(DateTime.utc(2027, 1, 3).add(Duration(days: 7 * i)), {
+            '音控': ['待定'],
+            '兒童主日': ['待定'],
+          }),
+      ],
+      history: const [],
+      eligible: const {
+        '兒童主日': {'Vivian', 'Daniel', 'Jasmine'},
+        '音控': {'Daniel', 'Hugo'},
+      },
+      monthlyRoles: const {'兒童主日'},
+    );
+    final byMonth = <int, Set<String>>{};
+    for (final r in result.updated) {
+      final p = r.duties.firstWhere((d) => d.role == '兒童主日').people;
+      byMonth.putIfAbsent(r.date.month, () => {}).addAll(p);
+    }
+    for (final e in byMonth.entries) {
+      expect(e.value, hasLength(1), reason: '${e.key} 月：${e.value}');
+    }
+    expect(byMonth[1], isNot(byMonth[2]));
+  });
 }

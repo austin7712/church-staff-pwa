@@ -182,7 +182,10 @@ AutoAssignResult autoAssign({
   Map<String, int> consecutiveWeeks = const {},
   List<List<String>> families = const [],
   Map<String, Map<String, double>> ratios = const {},
+  Set<String> monthlyRoles = const {},
 }) {
+  // 一個月同一位（例如兒童主日老師）：這個月是誰。
+  final monthPick = <String, ({List<String> people, String month})>{};
   // 夫妻、家人：一起出席一起缺席，盡量排在同一天。名字不分大小寫。
   final familyOf = <String, Set<String>>{};
   for (final f in families) {
@@ -286,11 +289,18 @@ AutoAssignResult autoAssign({
     }
     slots.addAll(List<RosterEntry?>.filled(roster.duties.length, null));
     // 奉獻點算最後排：前面排好的人當天本來就會到，優先請他們留下來點算。
+    // 一個月同一位的項目最先排（那個人這個月每週都要留給它），
+    // 奉獻點算最後排。
+    int rank(int k) {
+      final role = canonicalRole(roster.duties[k].role);
+      if (monthlyRoles.contains(role)) return 0;
+      if (kPreferPresentRoles.contains(role)) return 2;
+      return 1;
+    }
     final order = [
-      for (var k = 0; k < roster.duties.length; k++)
-        if (!kPreferPresentRoles.contains(canonicalRole(roster.duties[k].role))) k,
-      for (var k = 0; k < roster.duties.length; k++)
-        if (kPreferPresentRoles.contains(canonicalRole(roster.duties[k].role))) k,
+      for (final r in [0, 1, 2])
+        for (var k = 0; k < roster.duties.length; k++)
+          if (rank(k) == r) k,
     ];
     for (final slot in order) {
       final duty = roster.duties[slot];
@@ -309,6 +319,17 @@ AutoAssignResult autoAssign({
         continue;
       }
       if (skipRoles.contains(duty.role) || !_needsFilling(duty)) {
+        if (monthlyRoles.contains(canonicalRole(duty.role)) &&
+            !skipRoles.contains(duty.role)) {
+          final people = [
+            for (final p in duty.people)
+              if (!isPlaceholderPerson(p.trim()) && p.trim().isNotEmpty)
+                p.trim(),
+          ];
+          if (people.isNotEmpty) {
+            monthPick[duty.role] = (people: people, month: month);
+          }
+        }
         final weeks = consecutiveWeeks[duty.role] ?? 1;
         if (weeks > 1 && !skipRoles.contains(duty.role)) {
           // 已經排好的週也算進這一輪。
@@ -440,7 +461,17 @@ AutoAssignResult autoAssign({
           cur.left > 0 &&
           cur.people.length == need.count &&
           cur.people.every(candidates.contains);
-      final picked = keep
+      final monthly = monthlyRoles.contains(canonicalRole(duty.role));
+      final mp = monthPick[duty.role];
+      final keepMonth =
+          monthly &&
+          mp != null &&
+          mp.month == month &&
+          mp.people.length == need.count &&
+          mp.people.every(candidates.contains);
+      final picked = keepMonth
+          ? List<String>.from(mp.people)
+          : keep
           ? List<String>.from(cur.people)
           : _pickAvoidingFamily(
               candidates,
@@ -448,6 +479,9 @@ AutoAssignResult autoAssign({
               avoid: kNoFamilyPairRoles.contains(canonicalRole(duty.role)),
               familyOf: familyOf,
             );
+      if (monthly && picked.isNotEmpty) {
+        monthPick[duty.role] = (people: picked, month: month);
+      }
       if (weeks > 1 && picked.isNotEmpty) {
         streak[duty.role] = keep
             ? (people: picked, left: cur.left - 1)
