@@ -396,7 +396,8 @@ AutoAssignResult autoAssign({
                 // 免得某一項老是同一個人。
                 final here = (dayBusy[p] ?? const <String>{}).isNotEmpty;
                 final days = (planDays[p]?.length ?? 0) + (here ? 0 : 1);
-                final base = (counts[p] ?? 0) + 3 * days;
+                // 要多跑一趟的人再加一點：天數一樣時，先找本來就在的人。
+                final base = (counts[p] ?? 0) + 3 * days + (here ? 0 : 2);
                 // 家人在場就讓一天（一起出席）。奉獻點算再多讓一些：
                 // 點算的人最好本來就在。
                 final present =
