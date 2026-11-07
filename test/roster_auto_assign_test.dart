@@ -610,4 +610,24 @@ void main() {
     expect(people, hasLength(2));
     expect(people.toSet().containsAll({'Kevin', 'Grace'}), isFalse, reason: '$people');
   });
+
+  test('天數為主：聖餐長老優先排當天已經是司會報告的人（不用多跑一趟）', () {
+    final result = autoAssign(
+      targets: [
+        _week(
+          DateTime.utc(2027, 1, 3),
+          {
+            '司會報告': ['CT'],
+            '聖餐長老': ['待定'],
+          },
+          events: const ['聖餐'],
+        ),
+      ],
+      history: const [],
+      eligible: const {
+        '聖餐長老': {'CT', 'Joe'},
+      },
+    );
+    expect(result.updated.single.duties.last.people, ['CT']);
+  });
 }

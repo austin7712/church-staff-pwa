@@ -288,4 +288,21 @@ void main() {
     expect(rolesCanShare('收奉', '音控'), isTrue, reason: '舊名字也照規則');
     expect(rolesCanShare('兒童主日', '音控'), isFalse);
   });
+
+  test('服事天數：同一天兼好幾項只算一天', () {
+    final d1 = ServiceRoster(
+      id: 'a',
+      date: DateTime(2027, 1, 3),
+      type: ServiceType.sundayService,
+      serviceName: '主日崇拜',
+      duties: [
+        RosterEntry(role: '音控', people: const ['Daniel']),
+        RosterEntry(role: '兒童主日', people: const ['Daniel', '待定']),
+      ],
+    );
+    final d2 = d1.copyWith(id: 'b', date: DateTime(2027, 1, 10));
+    expect(serviceCounts([d1, d2]).first, isA<MapEntry<String, int>>());
+    expect(serviceCounts([d1, d2]).first.value, 4);
+    expect(serviceDays([d1, d2])['Daniel'], 2);
+  });
 }

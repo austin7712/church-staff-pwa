@@ -9,8 +9,8 @@ import 'staff_directory.dart';
 /// - 只填空格（沒有人或只有「待定」）；已經排好的不動。講員不排。
 /// - 不跨事工：一項服事只從 [eligible] 裡挑，預設是「這一項做過 2 次以上」
 ///   的人，安排者可以再勾選其他人（例如請產假剛回來的同工）。
-/// - 公平：以這次排的期間為準，同一項服事裡大家從 0 開始輪，次數最少的先排；
-///   次數一樣時，最久沒排到這一項的先排。
+/// - 公平：以這次排的期間為準，主要看「要來幾天」（同一天兼好幾項算一天），
+///   再加上這一項的次數；少的先排。兼很多項的人總量不會比別人高出一大截。
 /// - 同一天不重複排同一個人（不同聚會也算）；盡量不連續兩週排同一項。
 /// - 特殊週照歷史：聯合崇拜（台語主領）歷史上只排收奉，其他項是「台語」；
 ///   聖餐只在有「聖餐」的週排。歷史上一項在這種週通常排幾個人就排幾個。
@@ -193,6 +193,8 @@ AutoAssignResult autoAssign({
   }
   // 這次期間每個人所有項目加起來的次數（次數相同時，總次數少的先排）。
   final planTotals = <String, int>{};
+  // 這次期間每個人要來的日子（同一天兼好幾項只算一天）：公平主要看這個。
+  final planDays = <String, Set<String>>{};
   // 要連續排幾週的項目（例如幼兒主日老師連兩週）：目前這一輪是誰、還剩幾週。
   final streak = <String, ({List<String> people, int left})>{};
   final patterns = _learnPatterns(history);
@@ -221,6 +223,9 @@ AutoAssignResult autoAssign({
       final byPerson = planCounts.putIfAbsent(role, () => {});
       byPerson[person] = (byPerson[person] ?? 0) + 1;
       planTotals[person] = (planTotals[person] ?? 0) + 1;
+      planDays.putIfAbsent(person, () => {}).add(
+        '${date.year}-${date.month}-${date.day}',
+      );
     }
     final last = lastServed.putIfAbsent(role, () => {});
     final prev = last[person];
@@ -386,16 +391,21 @@ AutoAssignResult autoAssign({
               // 50% 的人排一次等於別人排兩次。
               double score(String p) {
                 final ratio = ratios[duty.role]?[p] ?? 1.0;
-                final base = (counts[p] ?? 0) + 3 * (planTotals[p] ?? 0);
-                // 排一次會讓 base 加 4（這一項 1＋總次數 3），家人在場就讓一次。
-                // 奉獻點算：當天已經有其他服事的人本來就在，盡量請他們點算
-                // （讓兩次的份量），不用另外多叫一個人來。
+                // 天數為主：排了之後他今年要來幾天。當天本來就有服事的人，
+                // 多兼一項不會多跑一趟，天數不增加。同一項的次數也一起看，
+                // 免得某一項老是同一個人。
+                final here = (dayBusy[p] ?? const <String>{}).isNotEmpty;
+                final days = (planDays[p]?.length ?? 0) + (here ? 0 : 1);
+                // 要多跑一趟的人再加一點：天數一樣時，先找本來就在的人。
+                final base = (counts[p] ?? 0) + 3 * days + (here ? 0 : 2);
+                // 家人在場就讓一天（一起出席）。奉獻點算再多讓一些：
+                // 點算的人最好本來就在。
                 final present =
                     kPreferPresentRoles.contains(canonicalRole(duty.role)) &&
-                    (dayBusy[p] ?? const <String>{}).isNotEmpty;
+                    here;
                 return (base + 1) / (ratio <= 0 ? 0.01 : ratio) -
-                    (familyHere(p) ? 4 : 0) -
-                    (present ? 8 : 0);
+                    (familyHere(p) ? 3 : 0) -
+                    (present ? 4 : 0);
               }
               final byCount = score(a).compareTo(score(b));
               if (byCount != 0) return byCount;

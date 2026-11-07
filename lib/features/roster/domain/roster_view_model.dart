@@ -400,6 +400,21 @@ List<MapEntry<String, int>> serviceCounts(List<ServiceRoster> rosters) {
   return list;
 }
 
+/// 每個人服事的天數：同一天兼好幾項只算一天（不同聚會同一天也算一天）。
+Map<String, int> serviceDays(List<ServiceRoster> rosters) {
+  final days = <String, Set<String>>{};
+  for (final roster in rosters) {
+    final day = '${roster.date.year}-${roster.date.month}-${roster.date.day}';
+    for (final duty in roster.duties) {
+      for (final person in duty.people.map((p) => p.trim())) {
+        if (person.isEmpty || isPlaceholderPerson(person)) continue;
+        days.putIfAbsent(person, () => {}).add(day);
+      }
+    }
+  }
+  return {for (final e in days.entries) e.key: e.value.length};
+}
+
 /// 照「服事項目設定」的順序排（[order]）。不在設定裡的放最後，保持原本先後。
 void sortRolesByOrder(List<String> roles, List<String> order) {
   if (order.isEmpty) return;

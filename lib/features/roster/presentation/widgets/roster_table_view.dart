@@ -288,6 +288,7 @@ class _CountsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final counts = serviceCounts(rosters);
+    final days = serviceDays(rosters);
     if (counts.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 14),
@@ -304,7 +305,7 @@ class _CountsCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '服事次數（這段期間）',
+                '服事次數・天數（這段期間）',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -323,7 +324,8 @@ class _CountsCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        '${entry.key} ${entry.value}',
+                        // 次數＝排了幾格；天數＝要來幾天（同一天兼好幾項算一天）。
+                        '${entry.key} ${entry.value}次・${days[entry.key] ?? 0}天',
                         style: const TextStyle(fontSize: 12),
                       ),
                     ),
