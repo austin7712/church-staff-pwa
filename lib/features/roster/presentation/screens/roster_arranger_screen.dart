@@ -624,9 +624,9 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
       role: {...byPerson},
   };
 
-  static const _ratioSteps = [1.0, 0.75, 0.5, 0.25];
+  static const _ratioSteps = [1.0, 0.75, 0.5, 0.25, 0.1, 0.05];
 
-  /// 點一下名字換下一個比例：100% → 75% → 50% → 25% → 100%。
+  /// 點一下名字換下一個比例：100% → 75% → 50% → 25% → 10% → 5% → 100%。
   void _cycleRatio(String role, String name) {
     final current = _ratios[role]?[name] ?? 1.0;
     final i = _ratioSteps.indexWhere((r) => (r - current).abs() < 0.01);
@@ -869,7 +869,7 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
                       ),
                       selected: (_ratios[role]?[name] ?? 1.0) < 1.0,
                       showCheckmark: false,
-                      tooltip: '點一下調整服事比例（100% → 75% → 50% → 25%）',
+                      tooltip: '點一下調整服事比例（100% → 75% → 50% → 25% → 10% → 5%）',
                       onPressed: isGroupRole(role)
                           ? null
                           : () => _cycleRatio(role, name),
