@@ -657,4 +657,33 @@ void main() {
     }
     expect(byMonth[1], isNot(byMonth[2]));
   });
+
+  test('服事比例 25%：就算她別的項目排很多，這一項也拿得到大約四分之一的份', () {
+    final result = autoAssign(
+      targets: [
+        for (var i = 0; i < 24; i++)
+          _week(DateTime.utc(2027, 1, 3).add(Duration(days: 7 * i)), {
+            '幼兒主日': ['待定'],
+            // Jasmine 每週都有別的服事（可以同一天兼的奉獻點算），天數比別人多。
+            '奉獻點算': ['Jasmine'],
+          }),
+      ],
+      history: const [],
+      eligible: const {
+        '幼兒主日': {'Jasmine', 'A', 'B'},
+      },
+      ratios: const {
+        '幼兒主日': {'Jasmine': 0.25},
+      },
+    );
+    final n = result.updated
+        .where(
+          (r) => r.duties
+              .firstWhere((d) => d.role == '幼兒主日')
+              .people
+              .contains('Jasmine'),
+        )
+        .length;
+    expect(n, inInclusiveRange(1, 4), reason: 'Jasmine 幼兒主日 $n 次');
+  });
 }
