@@ -13,6 +13,9 @@ typedef _PeopleSelection = ({
   List<String> people,
   StaffRanking? ranking,
   Map<String, String> personIdsByName,
+
+  /// 鎖定（一鍵安排、一鍵清空不動）。視窗沒有鎖定開關時是 null，不改。
+  bool? locked,
 });
 
 class _PeopleOptions {
@@ -52,6 +55,9 @@ class _RosterPeopleDialog extends StatefulWidget {
   /// 還不存在的項目沒有東西可以拿去換。
   final VoidCallback? onSwap;
 
+  /// 有值時，視窗裡多一個「鎖定這一格」開關（編輯既有或表格上的一格）。
+  final bool? initialLocked;
+
   const _RosterPeopleDialog({
     required this.title,
     required this.rosterType,
@@ -66,6 +72,7 @@ class _RosterPeopleDialog extends StatefulWidget {
     this.roleEditable = true,
     this.useBottomSheet = false,
     this.onSwap,
+    this.initialLocked,
   });
 
   @override
@@ -73,6 +80,7 @@ class _RosterPeopleDialog extends StatefulWidget {
 }
 
 class _RosterPeopleDialogState extends State<_RosterPeopleDialog> {
+  late bool _locked = widget.initialLocked ?? false;
   late Set<String> _selectedPeople;
   late Set<String> _customNames;
   final Set<String> _removedCustomNames = {};
@@ -405,6 +413,7 @@ class _RosterPeopleDialogState extends State<_RosterPeopleDialog> {
           ? StaffRanking(role, _options.where(_allUserNames.contains).toList())
           : null,
       personIdsByName: selectedPersonIdsByName,
+      locked: widget.initialLocked == null ? null : _locked,
     ));
     Navigator.of(context).pop();
   }
@@ -602,6 +611,18 @@ class _RosterPeopleDialogState extends State<_RosterPeopleDialog> {
       ],
     );
 
+    final lockTile = widget.initialLocked == null
+        ? null
+        : SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            secondary: Icon(_locked ? Icons.lock : Icons.lock_open),
+            title: const Text('鎖定這一格 🔒'),
+            subtitle: const Text('一鍵安排、一鍵清空都不會改；手動還是可以改'),
+            value: _locked,
+            onChanged: (value) => setState(() => _locked = value),
+          );
+
     final actions = Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
@@ -643,6 +664,7 @@ class _RosterPeopleDialogState extends State<_RosterPeopleDialog> {
               ),
               const SizedBox(height: 12),
               const Divider(height: 1),
+              ?lockTile,
               const SizedBox(height: 8),
               actions,
             ],
@@ -653,7 +675,18 @@ class _RosterPeopleDialogState extends State<_RosterPeopleDialog> {
 
     return AlertDialog(
       title: Text(widget.title),
-      content: SizedBox(width: double.maxFinite, child: content),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: lockTile == null
+            ? content
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(child: content),
+                  lockTile,
+                ],
+              ),
+      ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
