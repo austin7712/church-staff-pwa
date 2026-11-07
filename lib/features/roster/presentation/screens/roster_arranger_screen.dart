@@ -687,10 +687,23 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
       userNames: widget.userNames,
     );
     final style = Theme.of(context).textTheme.bodySmall;
-    if (result.isEmpty) {
+    // 只有「寫法相近」才是警告。還沒被排過的人（新同工、剛加進名單的人）
+    // 很正常，用灰色小字提一下就好。
+    if (result.similar.isEmpty) {
       return Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: Text('✅ 名字檢查：沒有發現寫法不一致的名字。', style: style),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('✅ 名字檢查：沒有發現寫法不一致的名字。', style: style),
+            if (result.unknown.isNotEmpty)
+              Text(
+                '還沒排過任何服事的人：${result.unknown.join('、')}'
+                '（新同工很正常；打錯字的話請改正）',
+                style: style?.copyWith(color: Colors.grey[600]),
+              ),
+          ],
+        ),
       );
     }
     return Container(
@@ -734,9 +747,9 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
           if (result.unknown.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              '不在任何服事表、也不是 App 帳號：${result.unknown.join('、')}'
-              '（新同工就不用管；如果是打錯字請改正）',
-              style: style,
+              '還沒排過任何服事的人：${result.unknown.join('、')}'
+              '（新同工很正常；打錯字的話請改正）',
+              style: style?.copyWith(color: Colors.grey[700]),
             ),
           ],
           const SizedBox(height: 6),
