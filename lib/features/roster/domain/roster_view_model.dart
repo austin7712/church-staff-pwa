@@ -22,6 +22,52 @@ bool isGroupRole(String role) => role.trim().startsWith('愛餐');
 /// 一格兩人時分「老師」「助教」的項目：第一位是老師，第二位起是助教。
 const Set<String> kTeacherAssistantRoles = {'幼兒主日'};
 
+/// 顯示時併進另一項的服事：幼兒助教跟幼兒主日（老師）放同一格。
+/// 資料上還是兩項，各自有同工名單、各自公平分配。
+const Map<String, String> kMergedInto = {'幼兒助教': '幼兒主日'};
+
+/// 合併顯示時的小標：主項目＝老師、併進來的＝助教。
+String? roleTag(RosterEntry duty, String person, ServiceRoster roster) {
+  if (isPlaceholderPerson(person)) return null;
+  if (kMergedInto.containsKey(duty.role)) return '助教';
+  final hasSub = roster.duties.any(
+    (d) =>
+        kMergedInto[d.role] == duty.role &&
+        d.people.any((p) => !isPlaceholderPerson(p) && p.trim().isNotEmpty),
+  );
+  if (hasSub) return '老師';
+  return personTag(duty, person);
+}
+
+/// 卡片用：把併進去的項目（幼兒助教）接到主項目（幼兒主日）那一行，名字加上
+/// 「（老師）」「（助教）」。只影響顯示。
+List<RosterEntry> mergeDutiesForDisplay(ServiceRoster roster, List<RosterEntry> duties) {
+  final result = <RosterEntry>[];
+  for (final d in duties) {
+    if (kMergedInto.containsKey(d.role) &&
+        duties.any((x) => x.role == kMergedInto[d.role])) {
+      continue;
+    }
+    final subs = duties.where((x) => kMergedInto[x.role] == d.role).toList();
+    if (subs.isEmpty) {
+      result.add(d.copyWith(people: peopleWithTags(d)));
+      continue;
+    }
+    String tagged(RosterEntry e, String p) {
+      final t = roleTag(e, p, roster);
+      return t == null ? p : '$p（$t）';
+    }
+    final people = <String>[
+      for (final p in d.people) tagged(d, p),
+      for (final s in subs)
+        for (final p in s.people)
+          if (!isPlaceholderPerson(p)) tagged(s, p),
+    ];
+    result.add(d.copyWith(people: people));
+  }
+  return result;
+}
+
 /// 名字旁的小標（幼兒主日兩人時：老師／助教）。只有一個人時不標。
 String? personTag(RosterEntry duty, String person) {
   if (!kTeacherAssistantRoles.contains(duty.role)) return null;
@@ -144,6 +190,12 @@ String shortRoleHeader(String role) => role;
 class RosterTableColumn {
   const RosterTableColumn({required this.header, required this.roles});
 
+  /// 「講員」那一欄（台語講員＋華語講員，分台、華兩行）。
+  bool get isSpeaker => roles.contains(kTwSpeakerRole);
+
+  /// 一欄合併兩項、點了要先選改哪一項（例如幼兒主日老師＋幼兒助教）。
+  bool get isMerged => roles.length > 1 && !isSpeaker;
+
   final String header;
 
   /// 這一欄收哪些服事項目。「講員」一欄收台語講員與華語講員。
@@ -264,10 +316,22 @@ RosterTableModel buildRosterTable(
         roles: [kTwSpeakerRole, kMwSpeakerRole],
       ),
     for (final role in otherRoles)
-      RosterTableColumn(header: shortRoleHeader(role), roles: [role]),
+      if (!kMergedInto.containsKey(role))
+        RosterTableColumn(
+          header: shortRoleHeader(role),
+          roles: [
+            role,
+            for (final MapEntry(key: sub, value: main) in kMergedInto.entries)
+              if (main == role && otherRoles.contains(sub)) sub,
+          ],
+        )
+      // 主項目不顯示時（例如分頁只看助教），助教自己一欄。
+      else if (!otherRoles.contains(kMergedInto[role]))
+        RosterTableColumn(header: shortRoleHeader(role), roles: [role]),
   ];
 
   RosterTableCell cell(
+    ServiceRoster roster,
     RosterEntry duty,
     String person,
     Set<String> conflicts,
@@ -276,7 +340,7 @@ RosterTableModel buildRosterTable(
     isMe: isPersonMe(duty, person, userId: userId, userName: userName),
     isPlaceholder: isPlaceholderPerson(person),
     isConflict: conflicts.contains(person.trim()),
-    tag: personTag(duty, person),
+    tag: roleTag(duty, person, roster),
     isLocked: duty.locked,
   );
 
@@ -291,7 +355,7 @@ RosterTableModel buildRosterTable(
       for (final duty in roster.duties.where((d) => d.role == role)) {
         for (final person in duty.people) {
           if (!keep(person) || !seen.add(person)) continue;
-          out.add(cell(duty, person, doubleBookedPeople(roster)));
+          out.add(cell(roster, duty, person, doubleBookedPeople(roster)));
         }
       }
     }
@@ -314,7 +378,7 @@ RosterTableModel buildRosterTable(
     }
     List<List<RosterTableCell>> laneCells({required bool taiwanese}) => [
       for (final c in columns)
-        if (c.roles.length == 2)
+        if (c.isSpeaker)
           cellsFor(
             roster,
             [taiwanese ? kTwSpeakerRole : kMwSpeakerRole],
@@ -396,7 +460,7 @@ bool rolesCanShare(String a, String b) {
 /// 講員欄：「台」行改台語講員、「華」行改華語講員；聯合崇拜那一行改已經
 /// 排了的那一位（都沒排時預設台語講員）。其他欄就是該欄的服事項目。
 String roleForCell(RosterTableRow row, RosterTableColumn column) {
-  if (column.roles.length == 1) return column.roles.single;
+  if (!column.isSpeaker) return column.roles.first;
   switch (row.lane) {
     case '台':
       return kTwSpeakerRole;

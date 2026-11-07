@@ -200,7 +200,10 @@ class _RosterViewCardBody extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Column(
-        children: dutiesInOrder(roster.duties, roleOrder).map((duty) {
+        children: mergeDutiesForDisplay(
+          roster,
+          dutiesInOrder(roster.duties, roleOrder),
+        ).map((duty) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             // dense：這裡沒有按鈕要撐觸控目標，列高就跟著文字走，一頁多看
@@ -208,14 +211,14 @@ class _RosterViewCardBody extends StatelessWidget {
             // 不必為此把檢視模式撐到跟編輯模式一樣高。
             child: DutyRow(
               role: duty.role,
-              people: peopleWithTags(duty),
+              people: duty.people,
               dense: true,
               // 名字加了「（老師）」之類的小標，highlight 也要對到加標後的寫法。
               highlightedPeople: {
                 ...myNames,
                 for (final p in duty.people)
-                  if (myNames.contains(p) && personTag(duty, p) != null)
-                    '$p（${personTag(duty, p)}）',
+                  for (final n in myNames)
+                    if (p == '$n（老師）' || p == '$n（助教）') p,
               },
               showPlaceholderLabels: true,
             ),

@@ -263,7 +263,7 @@ class RosterTableView extends StatelessWidget {
           // 但點了改的是同一項服事（放在「華」行），就不放「＋」以免重複。
           if (_editing &&
               cell.isEmpty &&
-              (column.roles.length == 2 || row.lane != '台'))
+              (column.isSpeaker || row.lane != '台'))
             Text(
               '＋',
               style: TextStyle(fontSize: 14, color: Colors.grey[500]),
@@ -522,6 +522,7 @@ class _NameTag extends StatelessWidget {
             Text(
               cell.tag!,
               softWrap: false,
+              overflow: TextOverflow.fade,
               style: TextStyle(
                 fontSize: 9,
                 height: 1.1,
