@@ -12,6 +12,10 @@ import '../widgets/roster_view_colors.dart';
 import '../widgets/roster_toolbar.dart';
 import '../../domain/roster_view_model.dart';
 import '../../../../core/utils/error_messages.dart';
+import '../../../../core/time/church_time.dart';
+import '../../../../core/utils/file_download.dart';
+import '../../../../core/utils/xlsx_writer.dart';
+import '../../domain/roster_export.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/utils/scroll_anchor.dart';
 import '../../../../core/utils/snappy_page_scroll_physics.dart';
@@ -44,6 +48,72 @@ class _RosterScreenState extends State<RosterScreen>
 
   /// 只列出排到自己的那幾天。
   bool _mineOnly = false;
+
+  /// 匯出：選年份，下載成 .xlsx（同一天的聚會合併成一列，跟總覽一樣）。
+  Future<void> _export(BuildContext context, List<ServiceType> types) async {
+    final thisYear = DateTime.now().year;
+    final year = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('匯出服事表'),
+              subtitle: Text('下載成試算表，可以用 Excel、Numbers 或 Google 試算表打開'),
+            ),
+            for (final y in [thisYear, thisYear + 1])
+              ListTile(
+                leading: const Icon(Icons.table_chart_outlined),
+                title: Text('$y 年全年'),
+                onTap: () => Navigator.pop(sheetContext, y),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (year == null || !context.mounted) return;
+    final provider = context.read<RosterProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final rosters = await provider.rostersInRange(
+        DateTime.utc(year, 1, 1),
+        DateTime.utc(year, 12, 31),
+      );
+      final shown = rosters
+          .where((r) => types.contains(r.type) &&
+                ChurchTime.dateKey(r.date).startsWith('$year-'))
+          .toList();
+      if (shown.isEmpty) {
+        messenger.showSnackBar(SnackBar(content: Text('$year 年還沒有服事表')));
+        return;
+      }
+      final order = <String>[];
+      for (final type in types) {
+        for (final role in provider.templates[type] ?? const <String>[]) {
+          if (!order.contains(role)) order.add(role);
+        }
+      }
+      final rows = rosterExportRows(shown, roleOrder: order);
+      final bytes = buildXlsx(
+        rows,
+        sheetName: '$year 服事表',
+        widths: rosterExportWidths(rows),
+      );
+      downloadFile(
+        bytes,
+        'IPCF服事表_$year.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      messenger.showSnackBar(
+        SnackBar(content: Text('已下載 $year 年服事表（${rows.length - 1} 週）')),
+      );
+    } catch (e, st) {
+      log('export failed', error: e, stackTrace: st);
+      messenger.showSnackBar(SnackBar(content: Text(mapErrorToUserMessage(e))));
+    }
+  }
 
   Future<void> _loadEditLibrary(
     BuildContext context,
@@ -233,6 +303,13 @@ class _RosterScreenState extends State<RosterScreen>
         tableMode: _tableMode,
         onChanged: (value) => setState(() => _tableMode = value),
       ),
+      if (canDownloadFiles)
+        RosterToolButton(
+          icon: Icons.download_outlined,
+          label: '匯出',
+          tooltip: '下載成試算表（Excel／Google 試算表）',
+          onPressed: () => _export(context, allowedTypes),
+        ),
       if (canEdit)
         RosterToolButton(
           icon: Icons.edit_outlined,
