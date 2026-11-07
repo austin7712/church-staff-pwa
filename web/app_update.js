@@ -141,6 +141,30 @@
       });
   });
 
+  // 一直開著的頁面也要換：每 5 分鐘檢查一次。找到新版會照上面的流程自動
+  // reload，所以只在使用者閒置一分鐘以上時才檢查，免得正在選人、打字到一半
+  // 畫面突然重載。
+  var lastActivity = Date.now();
+  ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(function (type) {
+    window.addEventListener(
+      type,
+      function () {
+        lastActivity = Date.now();
+      },
+      { passive: true, capture: true }
+    );
+  });
+  if (typeof setInterval === 'function') setInterval(function () {
+    if (document.visibilityState !== 'visible') return;
+    if (Date.now() - lastActivity < 60 * 1000) return;
+    ensureRegistration()
+      .then(function (registration) {
+        if (activateWaiting(registration)) return;
+        return registration.update();
+      })
+      .catch(function () {});
+  }, 5 * 60 * 1000);
+
   // 切回前景時檢查一次。裝成 App 的 PWA 從多工列切回來不算 navigation，
   // 瀏覽器不會自己檢查，可以好幾天都停在舊版。
   document.addEventListener('visibilitychange', function () {
