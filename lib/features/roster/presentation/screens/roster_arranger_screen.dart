@@ -10,6 +10,8 @@ import '../../domain/entities/service_roster.dart';
 import '../../domain/roster_schedule.dart';
 import '../../domain/roster_auto_assign.dart';
 import '../../domain/roster_view_model.dart';
+import '../../domain/name_check.dart';
+import '../../../auth/presentation/providers/user_admin_provider.dart';
 import '../providers/roster_provider.dart';
 import '../widgets/roster_card.dart';
 
@@ -226,6 +228,15 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
     try {
       final data = await _loadPool(provider, rosters);
       if (!mounted) return;
+      // 名字檢查要用：App 帳號的名字（讀不到也沒關係，只是少一種比對）。
+      var userNames = const <String>[];
+      try {
+        userNames = [
+          for (final u in await context.read<UserAdminProvider>().getUsers())
+            u.name,
+        ];
+      } catch (_) {}
+      if (!mounted) return;
       final edited = await showDialog<StaffPool>(
         context: context,
         builder: (_) => _PoolEditorDialog(
@@ -233,6 +244,7 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
           roles: data.roles,
           counts: data.counts,
           pool: data.pool,
+          userNames: userNames,
         ),
       );
       if (edited == null) return;
@@ -588,12 +600,14 @@ class _PoolEditorDialog extends StatefulWidget {
     required this.roles,
     required this.counts,
     required this.pool,
+    this.userNames = const [],
   });
 
   final String serviceName;
   final List<String> roles;
   final Map<String, Map<String, int>> counts;
   final StaffPool pool;
+  final List<String> userNames;
 
   @override
   State<_PoolEditorDialog> createState() => _PoolEditorDialogState();
@@ -625,6 +639,111 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
         byPerson[name] = next;
       }
     });
+  }
+
+  /// 把 [others] 都改成 [target]（同工名單、家人、服事比例一起改）。
+  void _unify(String target, List<String> others) {
+    setState(() {
+      for (final role in _pool.keys) {
+        final list = _pool[role]!;
+        final merged = <String>[];
+        for (final n in list) {
+          final m = others.contains(n) ? target : n;
+          if (!merged.contains(m)) merged.add(m);
+        }
+        _pool[role] = merged;
+      }
+      for (var i = 0; i < _families.length; i++) {
+        _families[i] = [
+          for (final n in _families[i]) others.contains(n) ? target : n,
+        ];
+      }
+      for (final byPerson in _ratios.values) {
+        for (final o in others) {
+          final r = byPerson.remove(o);
+          if (r != null) byPerson.putIfAbsent(target, () => r);
+        }
+      }
+    });
+  }
+
+  Widget _nameCheck(BuildContext context) {
+    final rosterCounts = <String, int>{};
+    for (final byPerson in widget.counts.values) {
+      for (final e in byPerson.entries) {
+        rosterCounts[e.key] = (rosterCounts[e.key] ?? 0) + e.value;
+      }
+    }
+    final result = checkNames(
+      poolNames: [
+        for (final MapEntry(key: role, value: names) in _pool.entries)
+          if (!isGroupRole(role)) ...names,
+        for (final f in _families) ...f,
+      ],
+      rosterCounts: rosterCounts,
+      userNames: widget.userNames,
+    );
+    final style = Theme.of(context).textTheme.bodySmall;
+    if (result.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Text('✅ 名字檢查：沒有發現寫法不一致的名字。', style: style),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE9C84A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '⚠️ 名字檢查',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '同一個人寫法不一樣，系統會當成兩個人：天數分開算、同一天重複排也'
+            '檢查不出來、LINE 提醒對不上。',
+            style: style,
+          ),
+          for (final g in result.similar) ...[
+            const SizedBox(height: 8),
+            Text('可能是同一個人：${g.names.join('／')}', style: style),
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final target in g.names)
+                  OutlinedButton(
+                    onPressed: () => _unify(target, [
+                      for (final n in g.names)
+                        if (n != target) n,
+                    ]),
+                    child: Text('名單統一成「$target」'),
+                  ),
+              ],
+            ),
+          ],
+          if (result.unknown.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '不在任何服事表、也不是 App 帳號：${result.unknown.join('、')}'
+              '（新同工就不用管；如果是打錯字請改正）',
+              style: style,
+            ),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            '「統一」只改同工名單；已經排好的服事表上的舊寫法，請在表格裡點那一格改。',
+            style: style?.copyWith(color: Colors.grey[700]),
+          ),
+        ],
+      ),
+    );
   }
 
   String _ratioLabel(String role, String name) {
@@ -685,6 +804,7 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
               '括號裡是今年做過幾次。點一下名字可以調整服事比例（例如 50% 就是大約只排別人的一半）。名字要跟服事表上的寫法一樣。',
               style: TextStyle(fontSize: 13),
             ),
+            _nameCheck(context),
             const SizedBox(height: 16),
             Text(
               '家人（一起出席、一起缺席，盡量排同一天）',
