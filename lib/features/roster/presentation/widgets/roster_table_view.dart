@@ -56,7 +56,7 @@ class RosterTableView extends StatelessWidget {
   static const _divider = Color(0xFFE3E7ED);
 
   /// 一欄至少要放得下一個英文名字（例如 Jasmine、Crispin）。
-  static const double _minColumnWidth = 64;
+  static const double _minColumnWidth = 56;
   static const _dayDivider = Color(0xFFC9D1DB);
 
   @override
@@ -176,37 +176,28 @@ class RosterTableView extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             side: const BorderSide(color: _divider),
           ),
+          // 每一欄至少放得下裡面最長的名字（包括「老師」「助教」那行），
+          // 名字永遠不會被切掉；螢幕比較寬時多出來的空間平均分給各欄，
+          // 比較窄時整張表左右滑。
           child: LayoutBuilder(
-            builder: (context, constraints) {
-              final fixed = 48.0 + (model.hasLanes ? 18.0 : 0.0);
-              final perColumn = model.columns.isEmpty
-                  ? double.infinity
-                  : (constraints.maxWidth - fixed) / model.columns.length;
-              // 手機上欄位太多時（總覽有十欄），每欄固定寬度、整張表左右滑，
-              // 名字才不會被拆成兩行。夠寬時照舊平均分。
-              if (perColumn >= _minColumnWidth) {
-                return Table(
-                  columnWidths: widths,
+            builder: (context, constraints) => _SideScroll(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Table(
+                  columnWidths: {
+                    for (final e in widths.entries)
+                      e.key: e.value is FlexColumnWidth
+                          ? const MaxColumnWidth(
+                              FixedColumnWidth(_minColumnWidth),
+                              IntrinsicColumnWidth(flex: 1),
+                            )
+                          : e.value,
+                  },
                   defaultVerticalAlignment: TableCellVerticalAlignment.top,
                   children: rows,
-                );
-              }
-              return _SideScroll(
-                child: SizedBox(
-                  width: fixed + _minColumnWidth * model.columns.length,
-                  child: Table(
-                    columnWidths: {
-                      for (final e in widths.entries)
-                        e.key: e.value is FlexColumnWidth
-                            ? const FixedColumnWidth(_minColumnWidth)
-                            : e.value,
-                    },
-                    defaultVerticalAlignment: TableCellVerticalAlignment.top,
-                    children: rows,
-                  ),
                 ),
-              );
-            },
+              ),
+            ),
           ),
         ),
         if (_editing)
@@ -263,7 +254,7 @@ class RosterTableView extends StatelessWidget {
           // 但點了改的是同一項服事（放在「華」行），就不放「＋」以免重複。
           if (_editing &&
               cell.isEmpty &&
-              (column.roles.length == 2 || row.lane != '台'))
+              (column.isSpeaker || row.lane != '台'))
             Text(
               '＋',
               style: TextStyle(fontSize: 14, color: Colors.grey[500]),
@@ -494,34 +485,45 @@ class _NameTag extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
         border: border,
       ),
-      child: Text.rich(
-        TextSpan(
-          text: cell.text,
-          children: [
-            if (cell.tag != null)
-              TextSpan(
-                text: ' ${cell.tag}',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.normal,
-                  color: cell.tag == '老師'
-                      ? const Color(0xFF8A4B00)
-                      : const Color(0xFF5B6573),
-                ),
+      // 「老師」「助教」放在名字下面一行：欄位固定寬，跟名字擠同一行會被切掉。
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text.rich(
+            TextSpan(
+              text: cell.text,
+              children: [
+                if (showConflict && cell.isLocked)
+                  const TextSpan(text: ' 🔒', style: TextStyle(fontSize: 9)),
+              ],
+            ),
+            // 名字不拆行：欄位不夠寬時整張表改成可以左右滑（見 build）。
+            softWrap: false,
+            overflow: TextOverflow.fade,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.3,
+              letterSpacing: -0.1,
+              color: text,
+              fontWeight: weight,
+            ),
+          ),
+          if (cell.tag != null)
+            Text(
+              cell.tag!,
+              softWrap: false,
+              overflow: TextOverflow.fade,
+              style: TextStyle(
+                fontSize: 9,
+                height: 1.1,
+                fontWeight: FontWeight.w600,
+                color: cell.tag == '老師'
+                    ? const Color(0xFF8A4B00)
+                    : const Color(0xFF5B6573),
               ),
-            if (showConflict && cell.isLocked)
-              const TextSpan(text: ' 🔒', style: TextStyle(fontSize: 9)),
-          ],
-        ),
-        // 名字不拆行：欄位不夠寬時整張表改成可以左右滑（見 build）。
-        softWrap: false,
-        style: TextStyle(
-          fontSize: 12,
-          height: 1.3,
-          letterSpacing: -0.1,
-          color: text,
-          fontWeight: weight,
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -546,10 +548,12 @@ class _SideScrollState extends State<_SideScroll> {
   void initState() {
     super.initState();
     _controller.addListener(_update);
+    // 表格本來就放得下（不用滑）時，提示一開始就不要出現。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _update());
   }
 
   void _update() {
-    if (!_controller.hasClients) return;
+    if (!_controller.hasClients || !mounted) return;
     final atEnd =
         _controller.offset >= _controller.position.maxScrollExtent - 4;
     if (atEnd != _atEnd) setState(() => _atEnd = atEnd);

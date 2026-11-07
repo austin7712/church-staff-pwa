@@ -44,8 +44,45 @@ class RosterEditTable extends StatelessWidget {
       onlyRoles: onlyRoles,
       exceptRoles: exceptRoles,
       onCellTap: (row, column) =>
-          _editCell(context, row.roster, roleForCell(row, column)),
+          column.isMerged
+          ? _chooseRole(context, row.roster, column.roles)
+          : _editCell(context, row.roster, roleForCell(row, column)),
     );
+  }
+
+  /// 一格合併兩項（幼兒主日老師＋幼兒助教）：先選要改哪一項。
+  Future<void> _chooseRole(
+    BuildContext context,
+    ServiceRoster roster,
+    List<String> roles,
+  ) async {
+    String label(String role) =>
+        kMergedInto.containsKey(role) ? '$role（助教）' : '$role（老師）';
+    final role = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final r in roles)
+              ListTile(
+                title: Text(label(r)),
+                subtitle: Text(
+                  roster.duties
+                          .where((d) => d.role == r)
+                          .expand((d) => d.people)
+                          .join('、')
+                          .ifEmpty('還沒排'),
+                ),
+                onTap: () => Navigator.pop(sheetContext, r),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (role == null || !context.mounted) return;
+    await _editCell(context, roster, role);
   }
 
   Future<void> _editCell(
@@ -114,4 +151,8 @@ class RosterEditTable extends StatelessWidget {
       },
     );
   }
+}
+
+extension on String {
+  String ifEmpty(String fallback) => isEmpty ? fallback : this;
 }

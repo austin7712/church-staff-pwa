@@ -294,8 +294,8 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         consecutiveWeeks: const {'幼兒主日': 2},
         // 兒童主日老師一個月換一次。
         monthlyRoles: const {'兒童主日'},
-        // 2027 起幼兒主日每週兩位：第一位老師、第二位助教。
-        minPeople: _year >= 2027 ? const {'幼兒主日': 2} : const {},
+        // 幼兒主日老師和「幼兒助教」是兩個服事項目，各排一位（同一天不會
+        // 是同一人）。助教跟其他項目一樣照天數公平分配。
         families: data.pool.families,
         ratios: data.pool.ratios,
       );
@@ -687,10 +687,23 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
       userNames: widget.userNames,
     );
     final style = Theme.of(context).textTheme.bodySmall;
-    if (result.isEmpty) {
+    // 只有「寫法相近」才是警告。還沒被排過的人（新同工、剛加進名單的人）
+    // 很正常，用灰色小字提一下就好。
+    if (result.similar.isEmpty) {
       return Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: Text('✅ 名字檢查：沒有發現寫法不一致的名字。', style: style),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('✅ 名字檢查：沒有發現寫法不一致的名字。', style: style),
+            if (result.unknown.isNotEmpty)
+              Text(
+                '還沒排過任何服事的人：${result.unknown.join('、')}'
+                '（新同工很正常；打錯字的話請改正）',
+                style: style?.copyWith(color: Colors.grey[600]),
+              ),
+          ],
+        ),
       );
     }
     return Container(
@@ -734,9 +747,9 @@ class _PoolEditorDialogState extends State<_PoolEditorDialog> {
           if (result.unknown.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              '不在任何服事表、也不是 App 帳號：${result.unknown.join('、')}'
-              '（新同工就不用管；如果是打錯字請改正）',
-              style: style,
+              '還沒排過任何服事的人：${result.unknown.join('、')}'
+              '（新同工很正常；打錯字的話請改正）',
+              style: style?.copyWith(color: Colors.grey[700]),
             ),
           ],
           const SizedBox(height: 6),
