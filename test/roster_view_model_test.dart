@@ -326,4 +326,13 @@ void main() {
     expect(rows.first.slots, 4);
     expect(rows.first.byRole.keys, ['兒童主日', '音控']);
   });
+
+  test('幼兒主日兩人時標出老師、助教；一個人不標', () {
+    final two = RosterEntry(role: '幼兒主日', people: const ['Jeili', 'Tiyu']);
+    expect(personTag(two, 'Jeili'), '老師');
+    expect(personTag(two, 'Tiyu'), '助教');
+    expect(peopleWithTags(two), ['Jeili（老師）', 'Tiyu（助教）']);
+    final one = RosterEntry(role: '幼兒主日', people: const ['Jeili']);
+    expect(personTag(one, 'Jeili'), isNull);
+  });
 }

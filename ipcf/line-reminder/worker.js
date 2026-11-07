@@ -289,6 +289,17 @@ export async function unbindAll(kv, userId) {
 
 // ───────────────────────── 提醒內容 ─────────────────────────
 
+// 一格兩人時分老師、助教的項目（跟 app 的 kTeacherAssistantRoles 一樣）
+const TEACHER_ASSISTANT_ROLES = new Set(['幼兒主日']);
+function personTag(duty, person) {
+  if (!TEACHER_ASSISTANT_ROLES.has(duty.role)) return null;
+  const real = duty.people.map((p) => String(p || '').trim()).filter(isRealPerson);
+  if (real.length < 2) return null;
+  const i = real.map(normalizeName).indexOf(normalizeName(person));
+  if (i < 0) return null;
+  return i === 0 ? '老師' : '助教';
+}
+
 /** 把服事表整理成 { 正規化名字: [{ dateKey, serviceName, roles: [...] }] } */
 export function assignmentsByName(rosters) {
   const map = new Map();
@@ -302,7 +313,9 @@ export function assignmentsByName(rosters) {
         const k = `${roster.dateKey}|${roster.serviceName}`;
         if (!entry.items.has(k)) entry.items.set(k, { dateKey: roster.dateKey, serviceName: roster.serviceName, roles: [], team: roster.duties });
         const roles = entry.items.get(k).roles;
-        if (!roles.includes(duty.role)) roles.push(duty.role);
+        const tag = personTag(duty, person);
+        const label = tag ? `${duty.role}（${tag}）` : duty.role;
+        if (!roles.includes(label)) roles.push(label);
       }
     }
   }
@@ -323,7 +336,13 @@ export function teamLines(team, myNames) {
   for (const duty of [...(team || [])].sort((a, b) => order(a.role) - order(b.role))) {
     const people = duty.people.map((p) => String(p || '').trim()).filter(Boolean);
     const shown = people
-      .map((p) => (normalizeName(p) === '台語' ? '台語堂' : isRealPerson(p) ? (mine.has(normalizeName(p)) ? `${p}（你）` : p) : null))
+      .map((p) => {
+        if (normalizeName(p) === '台語') return '台語堂';
+        if (!isRealPerson(p)) return null;
+        const tag = personTag(duty, p);
+        const name = tag ? `${p}${tag === '老師' ? '・老師' : '・助教'}` : p;
+        return mine.has(normalizeName(p)) ? `${name}（你）` : name;
+      })
       .filter(Boolean);
     if (!shown.length) continue;
     lines.push(`　${duty.role}：${[...new Set(shown)].join('、')}`);

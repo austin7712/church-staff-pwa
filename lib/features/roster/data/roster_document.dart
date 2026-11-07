@@ -20,6 +20,7 @@ Map<String, dynamic> rosterToFirestore(ServiceRoster roster) => {
           'role': duty.role,
           'people': duty.people,
           'personIdsByName': duty.personIdsByName,
+          if (duty.locked) 'locked': true,
         },
       )
       .toList(),
@@ -64,6 +65,7 @@ ServiceRoster rosterFromFirestore(Map<String, dynamic> data, String id) {
             role: duty['role'] as String,
             people: List<String>.from(duty['people'] ?? []),
             personIdsByName: _personIds(duty['personIdsByName']),
+            locked: duty['locked'] == true,
           );
           }).toList() ??
           [],

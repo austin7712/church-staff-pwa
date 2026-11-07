@@ -7,21 +7,27 @@ class RosterEntry {
   final List<String> people;
   final Map<String, String> personIdsByName;
 
+  /// 鎖定：已經跟同工確認好的格子，一鍵安排、一鍵清空都不動（手動改還是可以）。
+  final bool locked;
+
   RosterEntry({
     required this.role,
     required this.people,
     this.personIdsByName = const {},
+    this.locked = false,
   });
 
   RosterEntry copyWith({
     String? role,
     List<String>? people,
     Map<String, String>? personIdsByName,
+    bool? locked,
   }) {
     return RosterEntry(
       role: role ?? this.role,
       people: people ?? this.people,
       personIdsByName: personIdsByName ?? this.personIdsByName,
+      locked: locked ?? this.locked,
     );
   }
 }

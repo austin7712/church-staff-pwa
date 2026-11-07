@@ -208,9 +208,15 @@ class _RosterViewCardBody extends StatelessWidget {
             // 不必為此把檢視模式撐到跟編輯模式一樣高。
             child: DutyRow(
               role: duty.role,
-              people: duty.people,
+              people: peopleWithTags(duty),
               dense: true,
-              highlightedPeople: myNames,
+              // 名字加了「（老師）」之類的小標，highlight 也要對到加標後的寫法。
+              highlightedPeople: {
+                ...myNames,
+                for (final p in duty.people)
+                  if (myNames.contains(p) && personTag(duty, p) != null)
+                    '$p（${personTag(duty, p)}）',
+              },
               showPlaceholderLabels: true,
             ),
           );

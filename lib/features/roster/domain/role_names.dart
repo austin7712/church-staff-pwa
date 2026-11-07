@@ -43,6 +43,7 @@ List<RosterEntry> canonicalDuties(List<RosterEntry> duties) {
     result[i] = prev.copyWith(
       people: people.isEmpty ? prev.people : people,
       personIdsByName: {...prev.personIdsByName, ...duty.personIdsByName},
+      locked: prev.locked || duty.locked,
     );
   }
   return result;

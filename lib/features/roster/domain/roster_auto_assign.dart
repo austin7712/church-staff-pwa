@@ -135,6 +135,7 @@ Map<String, Map<String, _PatternStats>> _learnPatterns(
 }
 
 bool _needsFilling(RosterEntry duty) =>
+    !duty.locked &&
     duty.people.every((p) => p.trim().isEmpty || p.trim() == placeholderPerson);
 
 /// 一格的安排結果（給預覽畫面看）。
@@ -183,6 +184,7 @@ AutoAssignResult autoAssign({
   List<List<String>> families = const [],
   Map<String, Map<String, double>> ratios = const {},
   Set<String> monthlyRoles = const {},
+  Map<String, int> minPeople = const {},
 }) {
   // 一個月同一位（例如兒童主日老師）：這個月是誰。
   final monthPick = <String, ({List<String> people, String month})>{};
@@ -343,11 +345,11 @@ AutoAssignResult autoAssign({
             final same =
                 cur != null &&
                 cur.left > 0 &&
-                cur.people.length == people.length &&
-                cur.people.every(people.contains);
+                cur.people.isNotEmpty &&
+                cur.people.first == people.first;
             streak[duty.role] = same
-                ? (people: people, left: cur.left - 1)
-                : (people: people, left: weeks - 1);
+                ? (people: [people.first], left: cur.left - 1)
+                : (people: [people.first], left: weeks - 1);
           }
         }
         slots[slot] = (duty);
@@ -363,12 +365,21 @@ AutoAssignResult autoAssign({
       // 沒有歷史可以學（新加的服事，例如兒童主日）：名單上有人就每週排一位；
       // 聖餐類只在聖餐週排。
       final hasPool = (eligible[duty.role] ?? const <String>{}).isNotEmpty;
-      final need =
+      var need =
           stats?.decide() ??
           (hasPool &&
                   (!_isCommunionRole(duty.role) || _hasCommunion(view))
               ? const _Need.people(1)
               : null);
+      // 每週至少要幾個人（例如 2027 起幼兒主日一位老師＋一位助教）。
+      final minCount = minPeople[duty.role];
+      if (minCount != null &&
+          need != null &&
+          !need.taiwanese &&
+          need.count > 0 &&
+          need.count < minCount) {
+        need = _Need.people(minCount);
+      }
       if (need == null || (!need.taiwanese && need.count == 0)) {
         slots[slot] = (duty);
         continue;
@@ -469,12 +480,13 @@ AutoAssignResult autoAssign({
 
       final weeks = consecutiveWeeks[duty.role] ?? 1;
       final cur = streak[duty.role];
+      // 連續幾週的項目只留第一位（老師）；兩人一組時助教每週照常輪。
       final keep =
           weeks > 1 &&
           cur != null &&
           cur.left > 0 &&
-          cur.people.length == need.count &&
-          cur.people.every(candidates.contains);
+          cur.people.isNotEmpty &&
+          candidates.contains(cur.people.first);
       final monthly = monthlyRoles.contains(canonicalRole(duty.role));
       final mp = monthPick[duty.role];
       final keepMonth =
@@ -486,7 +498,18 @@ AutoAssignResult autoAssign({
       final picked = keepMonth
           ? List<String>.from(mp.people)
           : keep
-          ? List<String>.from(cur.people)
+          ? [
+              cur.people.first,
+              ..._pickAvoidingFamily(
+                [
+                  for (final c in candidates)
+                    if (c != cur.people.first) c,
+                ],
+                need.count - 1,
+                avoid: kNoFamilyPairRoles.contains(canonicalRole(duty.role)),
+                familyOf: familyOf,
+              ),
+            ]
           : _pickAvoidingFamily(
               candidates,
               need.count,
@@ -498,8 +521,8 @@ AutoAssignResult autoAssign({
       }
       if (weeks > 1 && picked.isNotEmpty) {
         streak[duty.role] = keep
-            ? (people: picked, left: cur.left - 1)
-            : (people: picked, left: weeks - 1);
+            ? (people: [picked.first], left: cur.left - 1)
+            : (people: [picked.first], left: weeks - 1);
       }
       if (picked.isEmpty) {
         slots[slot] = (duty);
@@ -650,7 +673,7 @@ List<ServiceRoster> clearAssignments(
     var changed = false;
     final duties = [
       for (final d in r.duties)
-        if (keepRoles.contains(d.role) || !d.people.any((p) {
+        if (d.locked || keepRoles.contains(d.role) || !d.people.any((p) {
           final n = p.trim();
           return n.isNotEmpty && n != kTbdPlaceholder;
         }))
