@@ -294,8 +294,8 @@ class _RosterArrangerScreenState extends State<RosterArrangerScreen> {
         consecutiveWeeks: const {'幼兒主日': 2},
         // 兒童主日老師一個月換一次。
         monthlyRoles: const {'兒童主日'},
-        // 2027 起幼兒主日每週兩位：第一位老師、第二位助教。
-        minPeople: _year >= 2027 ? const {'幼兒主日': 2} : const {},
+        // 幼兒主日老師和「幼兒助教」是兩個服事項目，各排一位（同一天不會
+        // 是同一人）。助教跟其他項目一樣照天數公平分配。
         families: data.pool.families,
         ratios: data.pool.ratios,
       );

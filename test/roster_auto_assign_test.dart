@@ -741,4 +741,30 @@ void main() {
     expect(weeks[0].first, weeks[1].first, reason: '老師連兩週：$weeks');
     expect(weeks[2].first, weeks[3].first, reason: '$weeks');
   });
+
+  test('幼兒主日老師、幼兒助教分開兩項：同一天不同人，助教也公平輪', () {
+    const pool = {'Jeili', 'Paulina', 'Tiyu', 'An-ting'};
+    final result = autoAssign(
+      targets: [
+        for (var i = 0; i < 8; i++)
+          _week(DateTime.utc(2027, 3, 7).add(Duration(days: 7 * i)), {
+            '幼兒主日': ['待定'],
+            '幼兒助教': ['待定'],
+          }),
+      ],
+      history: const [],
+      eligible: const {'幼兒主日': pool, '幼兒助教': pool},
+      consecutiveWeeks: const {'幼兒主日': 2},
+    );
+    final helper = <String, int>{};
+    for (final r in result.updated) {
+      final t = r.duties.firstWhere((d) => d.role == '幼兒主日').people.single;
+      final a = r.duties.firstWhere((d) => d.role == '幼兒助教').people.single;
+      expect(t, isNot(a));
+      helper[a] = (helper[a] ?? 0) + 1;
+    }
+    final v = helper.values.toList();
+    expect(v.reduce((x, y) => x > y ? x : y) - v.reduce((x, y) => x < y ? x : y),
+        lessThanOrEqualTo(2), reason: '$helper');
+  });
 }
