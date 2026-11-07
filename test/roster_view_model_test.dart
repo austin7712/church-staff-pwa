@@ -305,4 +305,25 @@ void main() {
     expect(serviceCounts([d1, d2]).first.value, 4);
     expect(serviceDays([d1, d2])['Daniel'], 2);
   });
+
+  test('服事量表：天數多的在前，列出各項次數，小組不列', () {
+    final d1 = ServiceRoster(
+      id: 'a',
+      date: DateTime(2027, 1, 3),
+      type: ServiceType.sundayService,
+      serviceName: '主日崇拜',
+      duties: [
+        RosterEntry(role: '音控', people: const ['Daniel']),
+        RosterEntry(role: '兒童主日', people: const ['Daniel']),
+        RosterEntry(role: '敬拜讚美', people: const ['Joe']),
+        RosterEntry(role: '愛餐整理', people: const ['喜樂小組']),
+      ],
+    );
+    final d2 = d1.copyWith(id: 'b', date: DateTime(2027, 1, 10));
+    final rows = personLoads([d1, d2], roleOrder: const ['兒童主日', '音控']);
+    expect(rows.map((r) => r.name), ['Daniel', 'Joe']);
+    expect(rows.first.days, 2);
+    expect(rows.first.slots, 4);
+    expect(rows.first.byRole.keys, ['兒童主日', '音控']);
+  });
 }

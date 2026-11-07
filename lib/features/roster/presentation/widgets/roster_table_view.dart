@@ -226,7 +226,11 @@ class RosterTableView extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: muted, height: 1.5),
             ),
           ),
-        if (showCounts) _CountsCard(rosters: rosters),
+        if (showCounts)
+          _CountsCard(
+            rosters: rosters,
+            roleOrder: roleOrder.isEmpty ? alwaysShowRoles : roleOrder,
+          ),
     ];
     if (embedded) {
       return Column(
@@ -279,17 +283,28 @@ class RosterTableView extends StatelessWidget {
   }
 }
 
-/// 每個人這段期間排了幾次，幫安排的人平均分配。
+/// 每個人這段期間要來幾天、排了幾次、各項幾次，幫安排的人看公不公平。
+/// 一人一列，照天數多到少；天數畫成長條，一眼看出誰特別多。
 class _CountsCard extends StatelessWidget {
-  const _CountsCard({required this.rosters});
+  const _CountsCard({required this.rosters, this.roleOrder = const []});
 
   final List<ServiceRoster> rosters;
+  final List<String> roleOrder;
 
   @override
   Widget build(BuildContext context) {
-    final counts = serviceCounts(rosters);
-    final days = serviceDays(rosters);
-    if (counts.isEmpty) return const SizedBox.shrink();
+    final rows = personLoads(rosters, roleOrder: roleOrder);
+    if (rows.isEmpty) return const SizedBox.shrink();
+    final maxDays = rows.map((r) => r.days).reduce((a, b) => a > b ? a : b);
+    final muted = Colors.grey[600]!;
+    final avg = rows.map((r) => r.days).reduce((a, b) => a + b) / rows.length;
+
+    Widget head(String t, {TextAlign align = TextAlign.left}) => Text(
+      t,
+      textAlign: align,
+      style: TextStyle(fontSize: 11, color: muted, fontWeight: FontWeight.w600),
+    );
+
     return Padding(
       padding: const EdgeInsets.only(top: 14),
       child: Card(
@@ -300,37 +315,102 @@ class _CountsCard extends StatelessWidget {
           side: const BorderSide(color: RosterTableView._divider),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '服事次數・天數（這段期間）',
+                '每個人的服事量（這段期間）',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 2),
+              Text(
+                '天數＝要來教會幾天（同一天兼好幾項算一天）；次數＝排了幾格。'
+                '平均 ${avg.toStringAsFixed(1)} 天。',
+                style: TextStyle(fontSize: 11, color: muted, height: 1.4),
+              ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
+              Row(
                 children: [
-                  for (final entry in counts)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kRosterPlaceholderFill,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        // 次數＝排了幾格；天數＝要來幾天（同一天兼好幾項算一天）。
-                        '${entry.key} ${entry.value}次・${days[entry.key] ?? 0}天',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
+                  SizedBox(width: 76, child: head('同工')),
+                  Expanded(child: head('天數')),
+                  SizedBox(width: 40, child: head('次數', align: TextAlign.right)),
                 ],
               ),
+              const Divider(height: 10),
+              for (final r in rows)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 76,
+                            child: Text(
+                              r.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: FractionallySizedBox(
+                                    widthFactor: maxDays == 0
+                                        ? 0
+                                        : (r.days / maxDays).clamp(0.04, 1.0),
+                                    alignment: Alignment.centerLeft,
+                                    child: Container(
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: r.days > avg * 1.3
+                                            ? const Color(0xFFE8A33D)
+                                            : const Color(0xFF7FA7D9),
+                                        borderRadius: BorderRadius.circular(5),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${r.days} 天',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(
+                            width: 40,
+                            child: Text(
+                              '${r.slots}',
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 76, top: 2),
+                        child: Text(
+                          [
+                            for (final e in r.byRole.entries)
+                              '${e.key} ${e.value}',
+                          ].join('・'),
+                          style: TextStyle(fontSize: 11, color: muted),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
