@@ -199,7 +199,6 @@ class RosterTableView extends StatelessWidget {
               ),
             ),
           ),
-          ),
         ),
         if (_editing)
           Padding(
