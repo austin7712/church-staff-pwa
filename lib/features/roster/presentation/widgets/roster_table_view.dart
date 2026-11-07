@@ -494,34 +494,44 @@ class _NameTag extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
         border: border,
       ),
-      child: Text.rich(
-        TextSpan(
-          text: cell.text,
-          children: [
-            if (cell.tag != null)
-              TextSpan(
-                text: ' ${cell.tag}',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.normal,
-                  color: cell.tag == '老師'
-                      ? const Color(0xFF8A4B00)
-                      : const Color(0xFF5B6573),
-                ),
+      // 「老師」「助教」放在名字下面一行：欄位固定寬，跟名字擠同一行會被切掉。
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text.rich(
+            TextSpan(
+              text: cell.text,
+              children: [
+                if (showConflict && cell.isLocked)
+                  const TextSpan(text: ' 🔒', style: TextStyle(fontSize: 9)),
+              ],
+            ),
+            // 名字不拆行：欄位不夠寬時整張表改成可以左右滑（見 build）。
+            softWrap: false,
+            overflow: TextOverflow.fade,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.3,
+              letterSpacing: -0.1,
+              color: text,
+              fontWeight: weight,
+            ),
+          ),
+          if (cell.tag != null)
+            Text(
+              cell.tag!,
+              softWrap: false,
+              style: TextStyle(
+                fontSize: 9,
+                height: 1.1,
+                fontWeight: FontWeight.w600,
+                color: cell.tag == '老師'
+                    ? const Color(0xFF8A4B00)
+                    : const Color(0xFF5B6573),
               ),
-            if (showConflict && cell.isLocked)
-              const TextSpan(text: ' 🔒', style: TextStyle(fontSize: 9)),
-          ],
-        ),
-        // 名字不拆行：欄位不夠寬時整張表改成可以左右滑（見 build）。
-        softWrap: false,
-        style: TextStyle(
-          fontSize: 12,
-          height: 1.3,
-          letterSpacing: -0.1,
-          color: text,
-          fontWeight: weight,
-        ),
+            ),
+        ],
       ),
     );
   }
